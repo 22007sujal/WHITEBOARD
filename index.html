@@ -6,7 +6,6 @@
     <title>Pressure Sensitive Whiteboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-    <!-- jsPDF for PDF generation -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <style>
         body {
@@ -128,7 +127,6 @@
         }
         #selection-ui.active { display: block; }
         
-        /* Ensure pointer events work on the button container */
         #selection-actions {
             pointer-events: auto;
             position: absolute;
@@ -142,16 +140,70 @@
         .cursor-pan { cursor: grab !important; }
         .cursor-panning { cursor: grabbing !important; }
         ::-webkit-scrollbar { width: 0px; background: transparent; }
+
+        /* Top Toolbar Animations */
+        #toolbar-wrapper {
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        #toolbar-wrapper.collapsed {
+            transform: translate(-50%, -100%);
+        }
+        #toolbar-wrapper.collapsed #toggle-arrow {
+            transform: rotate(180deg);
+            top: 100%; /* Move below the hidden toolbar */
+            background-color: rgba(39, 39, 42, 0.9);
+        }
+        #toolbar-content {
+            transition: opacity 0.2s;
+        }
+        #toolbar-wrapper.collapsed #toolbar-content {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        /* Right Toolbar Animations */
+        #right-toolbar-wrapper {
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        #right-toolbar-wrapper.collapsed {
+            /* Move right by 100% of its width + the 1.5rem (24px) margin from right-6 */
+            transform: translateX(calc(100% + 1.5rem));
+        }
+        #right-toolbar-wrapper.collapsed #right-toggle-arrow {
+            /* Rotate to point left, maintain vertical centering */
+            transform: translateY(-50%) rotate(180deg);
+            /* Keep background consistent */
+            background-color: rgba(39, 39, 42, 0.9);
+        }
+        #right-toolbar-content {
+            transition: opacity 0.2s;
+        }
+        #right-toolbar-wrapper.collapsed #right-toolbar-content {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        /* Loading indicator for storage restore */
+        #loading-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: #18181b; z-index: 100;
+            display: flex; align-items: center; justify-content: center;
+            color: #71717a; font-size: 1.2rem;
+            transition: opacity 0.5s;
+        }
+        #loading-overlay.fade-out { opacity: 0; pointer-events: none; }
     </style>
 </head>
 <body id="body-bg">
+    
+    <!-- Loading Screen -->
+    <div id="loading-overlay"><i class="fas fa-spinner fa-spin mr-3"></i> Restoring Canvas...</div>
 
     <div id="scroll-view" class="grid-bg">
         <div id="pages-stack"></div>
         
         <div id="selection-ui">
             <div id="selection-actions">
-                <!-- IMPORTANT: stopPropagation to prevent dragging when clicking delete -->
                 <button onpointerdown="event.stopPropagation()" onclick="deleteSelection()" class="w-10 h-10 rounded-full bg-red-600 text-white shadow-lg flex items-center justify-center hover:bg-red-700 transition-colors" title="Delete Selection (Del)">
                     <i class="fas fa-trash"></i>
                 </button>
@@ -172,26 +224,33 @@
         <button onclick="setTool('eraser')" class="wheel-btn absolute bottom-[15%] left-[15%]" title="Eraser"><i class="fas fa-eraser"></i></button>
     </div>
 
-    <!-- Toolbar -->
-    <div class="floating-ui top-4 left-1/2 transform -translate-x-1/2 bg-zinc-800/80 border border-zinc-700 rounded-full shadow-xl px-4 py-2 flex items-center gap-4">
-        <div class="flex items-center gap-2 border-r border-zinc-600 pr-4">
-            <button onclick="setTool('pen')" id="btn-pen" class="tool-btn active w-10 h-10 rounded-full bg-zinc-700 text-zinc-300 hover:bg-zinc-600 flex items-center justify-center" title="Pen (P)"><i class="fas fa-pen"></i></button>
-            <button onclick="setTool('eraser')" id="btn-eraser" class="tool-btn w-10 h-10 rounded-full bg-zinc-700 text-zinc-300 hover:bg-zinc-600 flex items-center justify-center" title="Eraser (E)"><i class="fas fa-eraser"></i></button>
-        </div>
-        <div class="flex items-center gap-3 border-r border-zinc-600 pr-4">
-            <input type="color" id="colorPicker" value="#ffffff" title="Color">
-            <div class="flex flex-col w-24">
-                <div class="flex justify-between text-[10px] text-zinc-400 mb-1">
-                    <span>Size</span>
-                    <span id="sizeValue">5px</span>
+    <!-- Top Toolbar Wrapper with Toggle -->
+    <div id="toolbar-wrapper" class="fixed top-0 left-1/2 transform -translate-x-1/2 z-50 flex flex-col items-center pt-4">
+        <div id="toolbar-content" class="bg-zinc-800/80 border border-zinc-700 rounded-full shadow-xl px-4 py-2 flex items-center gap-4 backdrop-blur-md">
+            <div class="flex items-center gap-2 border-r border-zinc-600 pr-4">
+                <button onclick="setTool('pen')" id="btn-pen" class="tool-btn active w-10 h-10 rounded-full bg-zinc-700 text-zinc-300 hover:bg-zinc-600 flex items-center justify-center" title="Pen (P)"><i class="fas fa-pen"></i></button>
+                <button onclick="setTool('eraser')" id="btn-eraser" class="tool-btn w-10 h-10 rounded-full bg-zinc-700 text-zinc-300 hover:bg-zinc-600 flex items-center justify-center" title="Eraser (E)"><i class="fas fa-eraser"></i></button>
+            </div>
+            <div class="flex items-center gap-3 border-r border-zinc-600 pr-4">
+                <input type="color" id="colorPicker" value="#ffffff" title="Color">
+                <div class="flex flex-col w-24">
+                    <div class="flex justify-between text-[10px] text-zinc-400 mb-1">
+                        <span>Size</span>
+                        <span id="sizeValue">5px</span>
+                    </div>
+                    <input type="range" min="1" max="50" value="5" id="sizeSlider" class="w-full accent-blue-500 h-1 bg-zinc-600 rounded-lg appearance-none cursor-pointer" oninput="updateSize(this.value)">
                 </div>
-                <input type="range" min="1" max="50" value="5" id="sizeSlider" class="w-full accent-blue-500 h-1 bg-zinc-600 rounded-lg appearance-none cursor-pointer" oninput="updateSize(this.value)">
+            </div>
+            <div class="flex items-center gap-2">
+                <button onclick="undo()" class="w-8 h-8 rounded-full text-zinc-400 hover:text-white hover:bg-zinc-700 flex items-center justify-center transition-colors" title="Undo (Ctrl+Z)"><i class="fas fa-undo"></i></button>
+                <button onclick="redo()" class="w-8 h-8 rounded-full text-zinc-400 hover:text-white hover:bg-zinc-700 flex items-center justify-center transition-colors" title="Redo (Ctrl+Y)"><i class="fas fa-redo"></i></button>
             </div>
         </div>
-        <div class="flex items-center gap-2">
-            <button onclick="undo()" class="w-8 h-8 rounded-full text-zinc-400 hover:text-white hover:bg-zinc-700 flex items-center justify-center transition-colors" title="Undo (Ctrl+Z)"><i class="fas fa-undo"></i></button>
-            <button onclick="redo()" class="w-8 h-8 rounded-full text-zinc-400 hover:text-white hover:bg-zinc-700 flex items-center justify-center transition-colors" title="Redo (Ctrl+Y)"><i class="fas fa-redo"></i></button>
-        </div>
+        
+        <!-- Toggle Button -->
+        <button onclick="toggleToolbar()" id="toggle-arrow" class="absolute -bottom-5 w-10 h-6 bg-zinc-800/80 border-b border-r border-l border-zinc-700 rounded-b-lg text-zinc-400 hover:text-white flex items-center justify-center backdrop-blur-md shadow-md transition-all">
+            <i class="fas fa-chevron-up text-xs"></i>
+        </button>
     </div>
 
     <!-- Page Controls -->
@@ -204,13 +263,20 @@
          <button onclick="deletePage()" class="w-8 h-8 rounded-full hover:bg-red-900/40 text-red-400 hover:text-red-300 flex items-center justify-center transition-colors"><i class="fas fa-times"></i></button>
     </div>
 
-    <!-- Bottom Actions -->
-    <div class="floating-ui bottom-6 right-6 flex flex-col gap-3">
-        <button onclick="toggleGrid()" class="w-12 h-12 rounded-full bg-zinc-800 border border-zinc-700 text-zinc-300 hover:bg-zinc-700 shadow-lg flex items-center justify-center transition-all" title="Toggle Grid"><i class="fas fa-border-all"></i></button>
-        <button onclick="clearCanvas()" class="w-12 h-12 rounded-full bg-red-900/50 border border-red-800 text-red-200 hover:bg-red-900/80 shadow-lg flex items-center justify-center transition-all" title="Clear Page"><i class="fas fa-trash-alt"></i></button>
-        <!-- Added PDF Button -->
-        <button onclick="downloadPDF()" class="w-12 h-12 rounded-full bg-indigo-600 text-white hover:bg-indigo-700 shadow-lg flex items-center justify-center transition-all" title="Download All as PDF"><i class="fas fa-file-pdf"></i></button>
-        <button onclick="downloadCanvas()" class="w-12 h-12 rounded-full bg-blue-600 text-white hover:bg-blue-700 shadow-lg flex items-center justify-center transition-all" title="Download Image"><i class="fas fa-image"></i></button>
+    <!-- Right Actions Toolbar with Toggle -->
+    <div id="right-toolbar-wrapper" class="fixed bottom-6 right-6 z-50">
+        <!-- Toggle Arrow -->
+        <button onclick="toggleRightToolbar()" id="right-toggle-arrow" class="absolute top-1/2 -left-8 transform -translate-y-1/2 w-6 h-10 bg-zinc-800/80 border border-zinc-700 rounded-l-lg text-zinc-400 hover:text-white flex items-center justify-center backdrop-blur-md shadow-md transition-all">
+            <i class="fas fa-chevron-right text-xs"></i>
+        </button>
+
+        <!-- Content -->
+        <div id="right-toolbar-content" class="flex flex-col gap-3 transition-opacity duration-200">
+            <button onclick="toggleGrid()" class="w-12 h-12 rounded-full bg-zinc-800 border border-zinc-700 text-zinc-300 hover:bg-zinc-700 shadow-lg flex items-center justify-center transition-all" title="Toggle Grid"><i class="fas fa-border-all"></i></button>
+            <button onclick="clearCanvas()" class="w-12 h-12 rounded-full bg-red-900/50 border border-red-800 text-red-200 hover:bg-red-900/80 shadow-lg flex items-center justify-center transition-all" title="Clear Page"><i class="fas fa-trash-alt"></i></button>
+            <button onclick="downloadPDF()" class="w-12 h-12 rounded-full bg-indigo-600 text-white hover:bg-indigo-700 shadow-lg flex items-center justify-center transition-all" title="Download All as PDF"><i class="fas fa-file-pdf"></i></button>
+            <button onclick="downloadCanvas()" class="w-12 h-12 rounded-full bg-blue-600 text-white hover:bg-blue-700 shadow-lg flex items-center justify-center transition-all" title="Download Image"><i class="fas fa-image"></i></button>
+        </div>
     </div>
 
     <script>
@@ -227,15 +293,23 @@
             startScrollTop: 0, startScrollLeft: 0,
             pages: [], activePageIndex: 0, 
             lassoPath: [], lassoSnapshot: null, 
-            selection: { active: false, pageIndex: -1, x: 0, y: 0, w: 0, h: 0, image: null }
+            selection: { active: false, pageIndex: -1, x: 0, y: 0, w: 0, h: 0, image: null },
+            strokeStartX: 0, strokeStartY: 0, strokeStartTime: 0 // Track stroke gesture
         };
 
         const MAX_HISTORY = 30;
         let baseCanvas = document.createElement('canvas');
         let baseCtx = baseCanvas.getContext('2d');
+        let saveTimeout = null;
 
         function init() {
-            addPage();
+            // Check for saved data
+            if (localStorage.getItem('wb_data')) {
+                loadFromStorage();
+            } else {
+                addPage();
+                document.getElementById('loading-overlay').classList.add('fade-out');
+            }
             setupObserver();
             setupGlobalEvents();
         }
@@ -260,7 +334,87 @@
             return { canvas, ctx };
         }
 
-        function addPage() {
+        function toggleToolbar() {
+            const wrapper = document.getElementById('toolbar-wrapper');
+            wrapper.classList.toggle('collapsed');
+        }
+
+        function toggleRightToolbar() {
+            const wrapper = document.getElementById('right-toolbar-wrapper');
+            wrapper.classList.toggle('collapsed');
+        }
+
+        function triggerSave() {
+            clearTimeout(saveTimeout);
+            saveTimeout = setTimeout(saveToStorage, 1000); // Debounce save 1s
+        }
+
+        function saveToStorage() {
+            try {
+                // Save current canvas state as DataURL for each page
+                const data = {
+                    activePageIndex: state.activePageIndex,
+                    pages: state.pages.map(p => p.canvas.toDataURL())
+                };
+                localStorage.setItem('wb_data', JSON.stringify(data));
+                console.log('Saved to storage');
+            } catch (e) {
+                console.warn('Local Storage quota exceeded. Could not save.', e);
+                // Optionally warn user: alert("Storage full! New strokes won't be saved.");
+            }
+        }
+
+        function loadFromStorage() {
+            try {
+                const data = JSON.parse(localStorage.getItem('wb_data'));
+                if (!data || !data.pages || data.pages.length === 0) {
+                    addPage();
+                    document.getElementById('loading-overlay').classList.add('fade-out');
+                    return;
+                }
+
+                // Restore pages
+                let loadedCount = 0;
+                data.pages.forEach((dataURL, index) => {
+                    const { canvas, ctx } = createPageCanvas(index);
+                    pagesStack.appendChild(canvas);
+                    
+                    const pageObj = { 
+                        id: `page-${index}`, 
+                        canvas: canvas, 
+                        ctx: ctx, 
+                        history: [dataURL], // Initial history state
+                        historyStep: 0 
+                    };
+                    state.pages.push(pageObj);
+
+                    const img = new Image();
+                    img.onload = () => {
+                        ctx.drawImage(img, 0, 0, canvas.width / (window.devicePixelRatio || 1), canvas.height / (window.devicePixelRatio || 1));
+                        loadedCount++;
+                        if (loadedCount === data.pages.length) {
+                             document.getElementById('loading-overlay').classList.add('fade-out');
+                        }
+                    };
+                    img.src = dataURL;
+                });
+
+                state.activePageIndex = Math.min(data.activePageIndex, state.pages.length - 1);
+                updatePageIndicator();
+                setTimeout(() => {
+                     const p = state.pages[state.activePageIndex];
+                     if(p) p.canvas.scrollIntoView();
+                }, 100);
+
+            } catch (e) {
+                console.error('Error loading from storage', e);
+                localStorage.removeItem('wb_data'); // Corrupt data?
+                addPage();
+                document.getElementById('loading-overlay').classList.add('fade-out');
+            }
+        }
+
+        function addPage(shouldSave = true) {
             if(state.selection.active) stampSelection();
             const index = state.pages.length;
             const { canvas, ctx } = createPageCanvas(index);
@@ -268,6 +422,7 @@
             state.pages.push({ id: `page-${index}`, canvas: canvas, ctx: ctx, history: [], historyStep: -1 });
             saveStateToPage(index);
             if (index > 0) setTimeout(() => canvas.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
+            if(shouldSave) triggerSave();
         }
 
         function deletePage() {
@@ -281,6 +436,7 @@
                 state.activePageIndex = Math.max(0, indexToDelete - 1);
             }
             updatePageIndicator();
+            triggerSave();
         }
 
         function scrollToNextPage() {
@@ -330,13 +486,40 @@
                 entries.forEach(entry => {
                     if (entry.isIntersecting) {
                         const idx = state.pages.findIndex(p => p.canvas === entry.target);
-                        if (idx !== -1) { state.activePageIndex = idx; updatePageIndicator(); }
+                        if (idx !== -1) { 
+                            state.activePageIndex = idx; 
+                            updatePageIndicator(); 
+                            triggerSave(); // Save valid scroll position occasionally
+                        }
                     }
                 });
             }, { threshold: 0.5 });
             const originalAddPage = addPage;
-            addPage = function() { originalAddPage(); observer.observe(state.pages[state.pages.length - 1].canvas); }
-            if(state.pages.length > 0) observer.observe(state.pages[0].canvas);
+            // redefine addPage to include observer. Note: this recurses if not careful, 
+            // but we modified addPage above to not be recursive. 
+            // Better to just update the logic above.
+            // Simplified: We'll manually attach observer in the addPage function logic? 
+            // Or just hook into the global event. 
+            // Let's just fix the addPage function above.
+            // Actually, my structure re-declares addPage. The initial logic was cleaner.
+            // Let's just re-apply the observer logic here:
+            state.pages.forEach(p => observer.observe(p.canvas));
+            
+            // Hook observer into future added pages
+            const existingAddPage = addPage;
+            addPage = function(shouldSave=true) {
+                 // Call original logic without recursion loop if it was clean
+                 // Re-implementing simplified version to avoid confusion:
+                 if(state.selection.active) stampSelection();
+                 const index = state.pages.length;
+                 const { canvas, ctx } = createPageCanvas(index);
+                 pagesStack.appendChild(canvas);
+                 state.pages.push({ id: `page-${index}`, canvas: canvas, ctx: ctx, history: [], historyStep: -1 });
+                 saveStateToPage(index);
+                 observer.observe(canvas);
+                 if (index > 0) setTimeout(() => canvas.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
+                 if(shouldSave) triggerSave();
+            }
         }
         function updatePageIndicator() { document.getElementById('pageIndicator').textContent = `Page ${state.activePageIndex + 1}`; }
 
@@ -401,6 +584,12 @@
             if (e.buttons === 1) {
                 state.mode = 'DRAWING';
                 state.lastX = info.x; state.lastY = info.y;
+                
+                // Track Gesture Start
+                state.strokeStartX = e.clientX;
+                state.strokeStartY = e.clientY;
+                state.strokeStartTime = Date.now();
+
                 draw(e, info.pageIndex);
             } else if (e.button === 1) { e.preventDefault(); toggleEraser(); }
         }
@@ -440,9 +629,40 @@
             } else if (state.mode === 'MOVING_SELECTION') {
                 state.mode = 'SELECTION_ACTIVE';
             } else if (state.mode === 'DRAWING') {
+                // Check for Rapid Strike Gesture
+                const duration = Date.now() - state.strokeStartTime;
+                const dx = e.clientX - state.strokeStartX;
+                const dy = e.clientY - state.strokeStartY;
+                const dist = Math.hypot(dx, dy);
+                const velocity = dist / duration;
+                
+                // Detection: Fast (>0.5px/ms), Long (>100px), Vertical (>2x Horizontal)
+                if (duration < 500 && dist > 100 && velocity > 0.5 && Math.abs(dy) > Math.abs(dx) * 2) {
+                    state.mode = 'IDLE';
+                    const page = state.pages[state.activePageIndex];
+                    
+                    // Undo the strike stroke
+                    restoreState(page);
+
+                    if (dy < 0) { // Swipe Up -> Next Page
+                        if (state.activePageIndex === state.pages.length - 1) {
+                            addPage();
+                        } else {
+                            scrollToNextPage();
+                        }
+                    } else { // Swipe Down -> Prev Page
+                        scrollToPrevPage();
+                    }
+                    return; // Exit without saving
+                }
+
                 state.mode = 'IDLE';
                 const page = state.pages[state.activePageIndex];
-                if (page) { page.ctx.beginPath(); saveStateToPage(state.activePageIndex); }
+                if (page) { 
+                    page.ctx.beginPath(); 
+                    saveStateToPage(state.activePageIndex); 
+                    triggerSave(); // Save to LocalStorage
+                }
             }
         }
 
@@ -588,6 +808,7 @@
             state.selection.active = false; state.selection.image = null; state.lassoPath = [];
             selectionUi.classList.remove('active');
             saveStateToPage(state.selection.pageIndex);
+            triggerSave();
         }
         
         function deleteSelection() {
@@ -602,6 +823,7 @@
             state.selection.active = false; state.selection.image = null; state.lassoPath = [];
             selectionUi.classList.remove('active');
             saveStateToPage(state.activePageIndex);
+            triggerSave();
         }
 
         function saveStateToPage(pageIndex) {
@@ -615,14 +837,27 @@
         function undo() {
             if (state.selection.active) stampSelection();
             const page = state.pages[state.activePageIndex];
-            if (page && page.historyStep > 0) { page.historyStep--; restoreState(page); }
+            if (page && page.historyStep > 0) { 
+                page.historyStep--; 
+                restoreState(page);
+                triggerSave();
+            }
         }
         function redo() {
             if (state.selection.active) stampSelection();
             const page = state.pages[state.activePageIndex];
-            if (page && page.historyStep < page.history.length - 1) { page.historyStep++; restoreState(page); }
+            if (page && page.historyStep < page.history.length - 1) { 
+                page.historyStep++; 
+                restoreState(page);
+                triggerSave();
+            }
         }
         function restoreState(page) {
+            if (!page.history[page.historyStep]) {
+                // Fallback for empty/new pages
+                page.ctx.clearRect(0, 0, page.canvas.width, page.canvas.height);
+                return;
+            }
             const img = new Image(); img.src = page.history[page.historyStep];
             img.onload = () => {
                 page.ctx.save(); page.ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -639,20 +874,16 @@
             page.ctx.clearRect(0, 0, page.canvas.width, page.canvas.height);
             page.ctx.restore();
             saveStateToPage(state.activePageIndex);
+            triggerSave();
         }
 
-        // Helper: Composites a canvas onto a dark background color for export
         function getCompositedCanvas(sourceCanvas) {
             const tempCanvas = document.createElement('canvas');
             tempCanvas.width = sourceCanvas.width;
             tempCanvas.height = sourceCanvas.height;
             const ctx = tempCanvas.getContext('2d');
-            
-            // Fill with app background color so white ink shows up
             ctx.fillStyle = '#18181b'; 
             ctx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
-            
-            // Draw original canvas on top
             ctx.drawImage(sourceCanvas, 0, 0);
             return tempCanvas;
         }
@@ -661,10 +892,7 @@
             if(state.selection.active) stampSelection();
             const page = state.pages[state.activePageIndex];
             if(!page) return;
-            
-            // Composite before download
             const composite = getCompositedCanvas(page.canvas);
-            
             const link = document.createElement('a'); 
             link.download = `whiteboard-p${state.activePageIndex+1}.png`;
             link.href = composite.toDataURL('image/png'); 
@@ -673,11 +901,7 @@
 
         async function downloadPDF() {
             if(state.selection.active) stampSelection();
-            
-            // Access jsPDF from global window object
             const { jsPDF } = window.jspdf;
-            
-            // Use current window dimensions for PDF page size to match aspect ratio
             const width = window.innerWidth;
             const height = window.innerHeight;
             const orientation = width > height ? 'l' : 'p';
@@ -690,15 +914,11 @@
             
             for (let i = 0; i < state.pages.length; i++) {
                 if (i > 0) pdf.addPage([width, height], orientation);
-                
                 const page = state.pages[i];
-                // Composite to ensure dark background is visible
                 const composite = getCompositedCanvas(page.canvas);
-                
                 const imgData = composite.toDataURL('image/jpeg', 0.95);
                 pdf.addImage(imgData, 'JPEG', 0, 0, width, height);
             }
-            
             pdf.save('whiteboard-export.pdf');
         }
         
