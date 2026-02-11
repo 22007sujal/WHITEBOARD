@@ -6,6 +6,8 @@
     <title>Pressure Sensitive Whiteboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <!-- jsPDF for PDF generation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <style>
         body {
             margin: 0;
@@ -204,9 +206,11 @@
 
     <!-- Bottom Actions -->
     <div class="floating-ui bottom-6 right-6 flex flex-col gap-3">
-        <button onclick="toggleGrid()" class="w-12 h-12 rounded-full bg-zinc-800 border border-zinc-700 text-zinc-300 hover:bg-zinc-700 shadow-lg flex items-center justify-center transition-all"><i class="fas fa-border-all"></i></button>
-        <button onclick="clearCanvas()" class="w-12 h-12 rounded-full bg-red-900/50 border border-red-800 text-red-200 hover:bg-red-900/80 shadow-lg flex items-center justify-center transition-all"><i class="fas fa-eraser"></i></button>
-        <button onclick="downloadCanvas()" class="w-12 h-12 rounded-full bg-blue-600 text-white hover:bg-blue-700 shadow-lg flex items-center justify-center transition-all"><i class="fas fa-download"></i></button>
+        <button onclick="toggleGrid()" class="w-12 h-12 rounded-full bg-zinc-800 border border-zinc-700 text-zinc-300 hover:bg-zinc-700 shadow-lg flex items-center justify-center transition-all" title="Toggle Grid"><i class="fas fa-border-all"></i></button>
+        <button onclick="clearCanvas()" class="w-12 h-12 rounded-full bg-red-900/50 border border-red-800 text-red-200 hover:bg-red-900/80 shadow-lg flex items-center justify-center transition-all" title="Clear Page"><i class="fas fa-trash-alt"></i></button>
+        <!-- Added PDF Button -->
+        <button onclick="downloadPDF()" class="w-12 h-12 rounded-full bg-indigo-600 text-white hover:bg-indigo-700 shadow-lg flex items-center justify-center transition-all" title="Download All as PDF"><i class="fas fa-file-pdf"></i></button>
+        <button onclick="downloadCanvas()" class="w-12 h-12 rounded-full bg-blue-600 text-white hover:bg-blue-700 shadow-lg flex items-center justify-center transition-all" title="Download Image"><i class="fas fa-image"></i></button>
     </div>
 
     <script>
@@ -241,7 +245,6 @@
             canvas.className = 'page-canvas';
             canvas.id = `page-${index}`;
             const dpr = window.devicePixelRatio || 1;
-            // Prevent 0 size errors
             const width = Math.max(1, window.innerWidth);
             const height = Math.max(1, window.innerHeight);
             
@@ -249,7 +252,7 @@
             canvas.style.height = `${height}px`;
             canvas.width = width * dpr;
             canvas.height = height * dpr;
-            // Removed desynchronized: true to fix disappearing ink issues
+            
             const ctx = canvas.getContext('2d'); 
             ctx.scale(dpr, dpr);
             ctx.lineCap = 'round';
@@ -292,13 +295,11 @@
         function resize() {
             if(state.selection.active) stampSelection();
             const dpr = window.devicePixelRatio || 1;
-            // Prevent 0 dimensions error
             const width = Math.max(1, window.innerWidth);
             const height = Math.max(1, window.innerHeight);
             
             state.pages.forEach(page => {
                 let tempCanvas = null;
-                // Only backup if we have valid dimensions
                 if (page.canvas.width > 0 && page.canvas.height > 0) {
                     tempCanvas = document.createElement('canvas');
                     tempCanvas.width = page.canvas.width;
@@ -316,7 +317,6 @@
                 page.ctx.lineJoin = 'round';
                 
                 if (tempCanvas) {
-                    // Draw backup to fit new logical dimensions
                     page.ctx.drawImage(tempCanvas, 0, 0, width, height);
                 }
             });
@@ -509,7 +509,6 @@
             const s = state.selection;
             const dpr = window.devicePixelRatio || 1;
             
-            // Pixel-perfect bounds
             let minX=Infinity, minY=Infinity, maxX=-Infinity, maxY=-Infinity;
             state.lassoPath.forEach(p => {
                 const px = p.x * dpr, py = p.y * dpr;
@@ -528,7 +527,6 @@
             selCanvas.width = w; selCanvas.height = h;
             const selCtx = selCanvas.getContext('2d');
             
-            // Draw & Mask
             selCtx.drawImage(page.canvas, -minX, -minY);
             selCtx.globalCompositeOperation = 'destination-in';
             selCtx.beginPath();
@@ -542,7 +540,6 @@
             
             s.image = selCanvas;
             
-            // Cut from Source
             page.ctx.save();
             page.ctx.setTransform(1, 0, 0, 1, 0, 0);
             page.ctx.globalCompositeOperation = 'destination-out';
@@ -555,7 +552,6 @@
             page.ctx.fill();
             page.ctx.restore();
             
-            // Update Base Buffer
             baseCanvas.width = page.canvas.width;
             baseCanvas.height = page.canvas.height;
             baseCtx.clearRect(0,0, baseCanvas.width, baseCanvas.height);
@@ -644,12 +640,66 @@
             page.ctx.restore();
             saveStateToPage(state.activePageIndex);
         }
+
+        // Helper: Composites a canvas onto a dark background color for export
+        function getCompositedCanvas(sourceCanvas) {
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = sourceCanvas.width;
+            tempCanvas.height = sourceCanvas.height;
+            const ctx = tempCanvas.getContext('2d');
+            
+            // Fill with app background color so white ink shows up
+            ctx.fillStyle = '#18181b'; 
+            ctx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+            
+            // Draw original canvas on top
+            ctx.drawImage(sourceCanvas, 0, 0);
+            return tempCanvas;
+        }
+
         function downloadCanvas() {
-             if(state.selection.active) stampSelection();
-             const page = state.pages[state.activePageIndex];
-             if(!page) return;
-             const link = document.createElement('a'); link.download = `whiteboard-p${state.activePageIndex+1}.png`;
-             link.href = page.canvas.toDataURL(); link.click();
+            if(state.selection.active) stampSelection();
+            const page = state.pages[state.activePageIndex];
+            if(!page) return;
+            
+            // Composite before download
+            const composite = getCompositedCanvas(page.canvas);
+            
+            const link = document.createElement('a'); 
+            link.download = `whiteboard-p${state.activePageIndex+1}.png`;
+            link.href = composite.toDataURL('image/png'); 
+            link.click();
+        }
+
+        async function downloadPDF() {
+            if(state.selection.active) stampSelection();
+            
+            // Access jsPDF from global window object
+            const { jsPDF } = window.jspdf;
+            
+            // Use current window dimensions for PDF page size to match aspect ratio
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+            const orientation = width > height ? 'l' : 'p';
+            
+            const pdf = new jsPDF({
+                orientation: orientation,
+                unit: 'px',
+                format: [width, height]
+            });
+            
+            for (let i = 0; i < state.pages.length; i++) {
+                if (i > 0) pdf.addPage([width, height], orientation);
+                
+                const page = state.pages[i];
+                // Composite to ensure dark background is visible
+                const composite = getCompositedCanvas(page.canvas);
+                
+                const imgData = composite.toDataURL('image/jpeg', 0.95);
+                pdf.addImage(imgData, 'JPEG', 0, 0, width, height);
+            }
+            
+            pdf.save('whiteboard-export.pdf');
         }
         
         function setTool(t) {
