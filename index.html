@@ -150,7 +150,7 @@
         }
         #toolbar-wrapper.collapsed #toggle-arrow {
             transform: rotate(180deg);
-            top: 100%; /* Move below the hidden toolbar */
+            top: 100%; 
             background-color: rgba(39, 39, 42, 0.9);
         }
         #toolbar-content {
@@ -166,19 +166,35 @@
             transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
         #right-toolbar-wrapper.collapsed {
-            /* Move right by 100% of its width + the 1.5rem (24px) margin from right-6 */
             transform: translateX(calc(100% + 1.5rem));
         }
         #right-toolbar-wrapper.collapsed #right-toggle-arrow {
-            /* Rotate to point left, maintain vertical centering */
             transform: translateY(-50%) rotate(180deg);
-            /* Keep background consistent */
             background-color: rgba(39, 39, 42, 0.9);
         }
         #right-toolbar-content {
             transition: opacity 0.2s;
         }
         #right-toolbar-wrapper.collapsed #right-toolbar-content {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        /* Page Controls (Bottom Left) Animations */
+        #page-controls-wrapper {
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        #page-controls-wrapper.collapsed {
+            transform: translateX(calc(-100% - 1.5rem));
+        }
+        #page-controls-wrapper.collapsed #page-toggle-arrow {
+            transform: translateY(-50%) rotate(180deg);
+            background-color: rgba(39, 39, 42, 0.9);
+        }
+        #page-controls-content {
+            transition: opacity 0.2s;
+        }
+        #page-controls-wrapper.collapsed #page-controls-content {
             opacity: 0;
             pointer-events: none;
         }
@@ -192,12 +208,23 @@
             transition: opacity 0.5s;
         }
         #loading-overlay.fade-out { opacity: 0; pointer-events: none; }
+        
+        /* Gesture Zone Indicator */
+        #gesture-zone {
+            touch-action: none;
+        }
     </style>
 </head>
 <body id="body-bg">
     
     <!-- Loading Screen -->
     <div id="loading-overlay"><i class="fas fa-spinner fa-spin mr-3"></i> Restoring Canvas...</div>
+
+    <!-- Dedicated Gesture Zone for Page Navigation (LEFT SIDE) - Widened to w-16 -->
+    <div id="gesture-zone" class="fixed top-0 left-0 w-16 h-full z-40 flex flex-col justify-center items-center group hover:bg-white/5 transition-colors cursor-pointer" title="Swipe vertically here to change/add pages">
+        <div class="h-16 w-1 rounded-full bg-zinc-700/50 group-hover:bg-zinc-500/80 transition-colors mb-2"></div>
+        <div class="h-16 w-1 rounded-full bg-zinc-700/50 group-hover:bg-zinc-500/80 transition-colors"></div>
+    </div>
 
     <div id="scroll-view" class="grid-bg">
         <div id="pages-stack"></div>
@@ -253,14 +280,21 @@
         </button>
     </div>
 
-    <!-- Page Controls -->
-    <div class="floating-ui bottom-6 left-6 bg-zinc-800/80 border border-zinc-700 rounded-full shadow-xl px-4 py-2 flex items-center gap-3">
-        <button onclick="scrollToPrevPage()" class="w-8 h-8 rounded-full text-zinc-400 hover:text-white hover:bg-zinc-700 flex items-center justify-center transition-colors"><i class="fas fa-chevron-up"></i></button>
-        <span id="pageIndicator" class="text-zinc-200 text-sm font-medium w-16 text-center select-none">Page 1</span>
-        <button onclick="scrollToNextPage()" class="w-8 h-8 rounded-full text-zinc-400 hover:text-white hover:bg-zinc-700 flex items-center justify-center transition-colors"><i class="fas fa-chevron-down"></i></button>
-        <div class="w-px h-6 bg-zinc-600 mx-1"></div>
-        <button onclick="addPage()" class="w-8 h-8 rounded-full bg-blue-600/20 text-blue-400 hover:bg-blue-600/40 flex items-center justify-center transition-colors"><i class="fas fa-plus"></i></button>
-         <button onclick="deletePage()" class="w-8 h-8 rounded-full hover:bg-red-900/40 text-red-400 hover:text-red-300 flex items-center justify-center transition-colors"><i class="fas fa-times"></i></button>
+    <!-- Page Controls (Bottom Left) -->
+    <div id="page-controls-wrapper" class="fixed bottom-6 left-6 z-50">
+        <!-- Toggle Arrow -->
+        <button onclick="togglePageControls()" id="page-toggle-arrow" class="absolute top-1/2 -right-8 transform -translate-y-1/2 w-6 h-10 bg-zinc-800/80 border border-zinc-700 rounded-r-lg text-zinc-400 hover:text-white flex items-center justify-center backdrop-blur-md shadow-md transition-all">
+            <i class="fas fa-chevron-left text-xs"></i>
+        </button>
+
+        <div id="page-controls-content" class="bg-zinc-800/80 border border-zinc-700 rounded-full shadow-xl px-4 py-2 flex items-center gap-3">
+            <button onclick="scrollToPrevPage()" class="w-8 h-8 rounded-full text-zinc-400 hover:text-white hover:bg-zinc-700 flex items-center justify-center transition-colors"><i class="fas fa-chevron-up"></i></button>
+            <span id="pageIndicator" class="text-zinc-200 text-sm font-medium w-16 text-center select-none">Page 1</span>
+            <button onclick="scrollToNextPage()" class="w-8 h-8 rounded-full text-zinc-400 hover:text-white hover:bg-zinc-700 flex items-center justify-center transition-colors"><i class="fas fa-chevron-down"></i></button>
+            <div class="w-px h-6 bg-zinc-600 mx-1"></div>
+            <button onclick="addPage()" class="w-8 h-8 rounded-full bg-blue-600/20 text-blue-400 hover:bg-blue-600/40 flex items-center justify-center transition-colors"><i class="fas fa-plus"></i></button>
+            <button onclick="deletePage()" class="w-8 h-8 rounded-full hover:bg-red-900/40 text-red-400 hover:text-red-300 flex items-center justify-center transition-colors"><i class="fas fa-times"></i></button>
+        </div>
     </div>
 
     <!-- Right Actions Toolbar with Toggle -->
@@ -284,6 +318,7 @@
         const scrollView = document.getElementById('scroll-view');
         const quickWheel = document.getElementById('quick-wheel');
         const selectionUi = document.getElementById('selection-ui');
+        const gestureZone = document.getElementById('gesture-zone');
         
         let state = {
             mode: 'IDLE', 
@@ -341,6 +376,11 @@
 
         function toggleRightToolbar() {
             const wrapper = document.getElementById('right-toolbar-wrapper');
+            wrapper.classList.toggle('collapsed');
+        }
+
+        function togglePageControls() {
+            const wrapper = document.getElementById('page-controls-wrapper');
             wrapper.classList.toggle('collapsed');
         }
 
@@ -495,21 +535,11 @@
                 });
             }, { threshold: 0.5 });
             const originalAddPage = addPage;
-            // redefine addPage to include observer. Note: this recurses if not careful, 
-            // but we modified addPage above to not be recursive. 
-            // Better to just update the logic above.
-            // Simplified: We'll manually attach observer in the addPage function logic? 
-            // Or just hook into the global event. 
-            // Let's just fix the addPage function above.
-            // Actually, my structure re-declares addPage. The initial logic was cleaner.
-            // Let's just re-apply the observer logic here:
             state.pages.forEach(p => observer.observe(p.canvas));
             
             // Hook observer into future added pages
             const existingAddPage = addPage;
             addPage = function(shouldSave=true) {
-                 // Call original logic without recursion loop if it was clean
-                 // Re-implementing simplified version to avoid confusion:
                  if(state.selection.active) stampSelection();
                  const index = state.pages.length;
                  const { canvas, ctx } = createPageCanvas(index);
@@ -526,8 +556,20 @@
         function setupGlobalEvents() {
             scrollView.addEventListener('contextmenu', e => e.preventDefault());
             scrollView.addEventListener('pointerdown', handlePointerDown);
-            scrollView.addEventListener('pointermove', handlePointerMove);
-            scrollView.addEventListener('pointerup', handlePointerUp);
+            // Move pointermove/up to window to catch drags that leave elements
+            window.addEventListener('pointermove', handlePointerMove);
+            window.addEventListener('pointerup', handlePointerUp);
+
+            // Gesture Zone Events
+            gestureZone.addEventListener('pointerdown', (e) => {
+                e.preventDefault(); 
+                e.stopPropagation(); // Don't bubble to scrollview
+                // Capture pointer to track it even if it leaves the div
+                gestureZone.setPointerCapture(e.pointerId); 
+                state.mode = 'GESTURE_SWIPE';
+                state.strokeStartY = e.clientY;
+                state.strokeStartTime = Date.now();
+            });
         }
 
         function getEventInfo(e) {
@@ -535,7 +577,7 @@
             if (targetCanvas.closest('#selection-ui')) {
                 if (state.selection.pageIndex !== -1) targetCanvas = state.pages[state.selection.pageIndex].canvas;
             }
-            if (targetCanvas.tagName !== 'CANVAS') return null;
+            if (!targetCanvas || targetCanvas.tagName !== 'CANVAS') return null;
             const pageIndex = state.pages.findIndex(p => p.canvas === targetCanvas);
             if (pageIndex === -1) return null;
             const rect = targetCanvas.getBoundingClientRect();
@@ -584,12 +626,6 @@
             if (e.buttons === 1) {
                 state.mode = 'DRAWING';
                 state.lastX = info.x; state.lastY = info.y;
-                
-                // Track Gesture Start
-                state.strokeStartX = e.clientX;
-                state.strokeStartY = e.clientY;
-                state.strokeStartTime = Date.now();
-
                 draw(e, info.pageIndex);
             } else if (e.button === 1) { e.preventDefault(); toggleEraser(); }
         }
@@ -599,7 +635,9 @@
                 scrollView.scrollTop = state.startScrollTop - (e.clientY - state.lastY);
                 return;
             }
+            // For drawing/lasso, we need valid canvas info. If dragging off canvas, info is null.
             const info = getEventInfo(e);
+            
             if (state.mode === 'MOVING_SELECTION') {
                 if (!info || info.pageIndex !== state.selection.pageIndex) return; 
                 state.selection.x += info.x - state.lastX;
@@ -628,34 +666,25 @@
                 finishLassoSelection(); state.mode = 'IDLE';
             } else if (state.mode === 'MOVING_SELECTION') {
                 state.mode = 'SELECTION_ACTIVE';
-            } else if (state.mode === 'DRAWING') {
-                // Check for Rapid Strike Gesture
-                const duration = Date.now() - state.strokeStartTime;
-                const dx = e.clientX - state.strokeStartX;
+            } else if (state.mode === 'GESTURE_SWIPE') {
+                // Handle Gesture Zone Swipe
                 const dy = e.clientY - state.strokeStartY;
-                const dist = Math.hypot(dx, dy);
-                const velocity = dist / duration;
+                const duration = Date.now() - state.strokeStartTime;
                 
-                // Detection: Fast (>0.5px/ms), Long (>100px), Vertical (>2x Horizontal)
-                if (duration < 500 && dist > 100 && velocity > 0.5 && Math.abs(dy) > Math.abs(dx) * 2) {
-                    state.mode = 'IDLE';
-                    const page = state.pages[state.activePageIndex];
-                    
-                    // Undo the strike stroke
-                    restoreState(page);
-
-                    if (dy < 0) { // Swipe Up -> Next Page
-                        if (state.activePageIndex === state.pages.length - 1) {
-                            addPage();
-                        } else {
-                            scrollToNextPage();
-                        }
-                    } else { // Swipe Down -> Prev Page
-                        scrollToPrevPage();
+                // Forgiving vertical swipe detection
+                if (duration < 800 && Math.abs(dy) > 50) {
+                    if (dy < 0) { // Swipe Up -> Next / Add
+                         if (state.activePageIndex === state.pages.length - 1) addPage();
+                         else scrollToNextPage();
+                    } else { // Swipe Down -> Prev
+                         scrollToPrevPage();
                     }
-                    return; // Exit without saving
                 }
+                state.mode = 'IDLE';
+                // Release capture if it was set on gestureZone
+                if(gestureZone.hasPointerCapture(e.pointerId)) gestureZone.releasePointerCapture(e.pointerId);
 
+            } else if (state.mode === 'DRAWING') {
                 state.mode = 'IDLE';
                 const page = state.pages[state.activePageIndex];
                 if (page) { 
@@ -776,6 +805,45 @@
             baseCanvas.height = page.canvas.height;
             baseCtx.clearRect(0,0, baseCanvas.width, baseCanvas.height);
             baseCtx.drawImage(page.canvas, 0, 0);
+        }
+
+        function selectAll() {
+            if (state.selection.active) stampSelection();
+            const page = state.pages[state.activePageIndex];
+            if (!page) return;
+
+            const dpr = window.devicePixelRatio || 1;
+            const w = page.canvas.width / dpr;
+            const h = page.canvas.height / dpr;
+
+            // 1. Create selection image (copy of current page)
+            const selCanvas = document.createElement('canvas');
+            selCanvas.width = page.canvas.width; 
+            selCanvas.height = page.canvas.height;
+            const selCtx = selCanvas.getContext('2d');
+            selCtx.drawImage(page.canvas, 0, 0);
+
+            // 2. Set State
+            state.selection = {
+                active: true,
+                pageIndex: state.activePageIndex,
+                x: 0,
+                y: 0,
+                w: w,
+                h: h,
+                image: selCanvas
+            };
+
+            // 3. Clear original page
+            page.ctx.clearRect(0, 0, page.canvas.width, page.canvas.height);
+
+            // 4. Update Base Buffer (Clear it, as there is nothing behind the selection now)
+            baseCanvas.width = page.canvas.width;
+            baseCanvas.height = page.canvas.height;
+            baseCtx.clearRect(0, 0, baseCanvas.width, baseCanvas.height);
+
+            state.mode = 'SELECTION_ACTIVE';
+            updateSelectionVisuals();
         }
 
         function renderSelectionMove() {
@@ -942,6 +1010,7 @@
         window.addEventListener('keydown', (e) => {
             if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); undo(); }
             if ((e.ctrlKey || e.metaKey) && e.key === 'y') { e.preventDefault(); redo(); }
+            if ((e.ctrlKey || e.metaKey) && e.key === 'a') { e.preventDefault(); selectAll(); }
             if (e.key === 'Delete' || e.key === 'Backspace') deleteSelection();
             if (e.code === 'Space' && !state.isSpaceBarDown) { state.isSpaceBarDown = true; if(state.mode === 'IDLE') scrollView.classList.add('cursor-pan'); }
         });
