@@ -1,0 +1,681 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Pressure Sensitive Whiteboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden; 
+            background-color: #18181b; 
+            touch-action: none; 
+            user-select: none;
+            font-family: 'Inter', sans-serif;
+        }
+
+        #scroll-view {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            overflow-y: auto;
+            overflow-x: hidden;
+            scroll-behavior: smooth;
+        }
+
+        #pages-stack {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 100%;
+            min-height: 100%;
+            padding-bottom: 50vh; 
+            padding-top: 20px;
+        }
+
+        .page-canvas {
+            display: block;
+            touch-action: none;
+            margin-bottom: 30px; 
+            background-color: transparent;
+            border-bottom: 1px dashed #3f3f46;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+        }
+        .page-canvas:last-child {
+            border-bottom: none;
+        }
+
+        .grid-bg {
+            background-image: radial-gradient(#3f3f46 1px, transparent 1px);
+            background-size: 24px 24px;
+            background-attachment: local; 
+        }
+
+        .floating-ui {
+            position: fixed; 
+            z-index: 50;
+            backdrop-filter: blur(8px);
+            transition: opacity 0.2s;
+        }
+
+        input[type="color"] {
+            -webkit-appearance: none;
+            border: none;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            padding: 0;
+            overflow: hidden;
+            cursor: pointer;
+        }
+        input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+        input[type="color"]::-webkit-color-swatch {
+            border: none;
+            border-radius: 50%;
+            border: 2px solid rgba(255,255,255,0.2);
+        }
+
+        .tool-btn { transition: all 0.2s ease; }
+        .tool-btn.active {
+            background-color: #3b82f6; 
+            color: white;
+            border-color: #3b82f6;
+        }
+
+        #quick-wheel { pointer-events: none; }
+        #quick-wheel.active { pointer-events: auto; }
+        .wheel-btn {
+            position: absolute;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: #27272a;
+            border: 1px solid #3f3f46;
+            color: #d4d4d8;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
+            transition: transform 0.1s, background 0.1s;
+        }
+        .wheel-btn:hover {
+            transform: scale(1.1);
+            background: #3f3f46;
+            color: white;
+        }
+        .wheel-center {
+            width: 50px;
+            height: 50px;
+            background: #3b82f6;
+            color: white;
+            z-index: 20;
+        }
+        
+        #selection-ui {
+            pointer-events: none;
+            border: 1px dashed rgba(59, 130, 246, 0.8);
+            background: rgba(59, 130, 246, 0.05);
+            display: none;
+            position: absolute; 
+            z-index: 40;
+        }
+        #selection-ui.active { display: block; }
+        
+        /* Ensure pointer events work on the button container */
+        #selection-actions {
+            pointer-events: auto;
+            position: absolute;
+            top: -45px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 8px;
+        }
+
+        .cursor-pan { cursor: grab !important; }
+        .cursor-panning { cursor: grabbing !important; }
+        ::-webkit-scrollbar { width: 0px; background: transparent; }
+    </style>
+</head>
+<body id="body-bg">
+
+    <div id="scroll-view" class="grid-bg">
+        <div id="pages-stack"></div>
+        
+        <div id="selection-ui">
+            <div id="selection-actions">
+                <!-- IMPORTANT: stopPropagation to prevent dragging when clicking delete -->
+                <button onpointerdown="event.stopPropagation()" onclick="deleteSelection()" class="w-10 h-10 rounded-full bg-red-600 text-white shadow-lg flex items-center justify-center hover:bg-red-700 transition-colors" title="Delete Selection (Del)">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Wheel -->
+    <div id="quick-wheel" class="hidden fixed z-50 w-48 h-48 rounded-full transform -translate-x-1/2 -translate-y-1/2">
+        <button onclick="hideQuickWheel()" class="wheel-btn wheel-center absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2"><i class="fas fa-times"></i></button>
+        <button onclick="adjustSize(2)" class="wheel-btn absolute top-0 left-1/2 transform -translate-x-1/2"><i class="fas fa-plus"></i></button>
+        <button onclick="adjustSize(-2)" class="wheel-btn absolute bottom-0 left-1/2 transform -translate-x-1/2"><i class="fas fa-minus"></i></button>
+        <button onclick="undo()" class="wheel-btn absolute left-0 top-1/2 transform -translate-y-1/2"><i class="fas fa-undo"></i></button>
+        <button onclick="redo()" class="wheel-btn absolute right-0 top-1/2 transform -translate-y-1/2"><i class="fas fa-redo"></i></button>
+        <button onclick="setQuickColor('#3b82f6')" class="wheel-btn absolute top-[15%] right-[15%]" style="background: #3b82f6; border-color: transparent;"></button>
+        <button onclick="setQuickColor('#ffffff')" class="wheel-btn absolute top-[15%] left-[15%]" style="background: #ffffff; border-color: transparent;"></button>
+        <button onclick="setQuickColor('#ef4444')" class="wheel-btn absolute bottom-[15%] right-[15%]" style="background: #ef4444; border-color: transparent;"></button>
+        <button onclick="setTool('eraser')" class="wheel-btn absolute bottom-[15%] left-[15%]" title="Eraser"><i class="fas fa-eraser"></i></button>
+    </div>
+
+    <!-- Toolbar -->
+    <div class="floating-ui top-4 left-1/2 transform -translate-x-1/2 bg-zinc-800/80 border border-zinc-700 rounded-full shadow-xl px-4 py-2 flex items-center gap-4">
+        <div class="flex items-center gap-2 border-r border-zinc-600 pr-4">
+            <button onclick="setTool('pen')" id="btn-pen" class="tool-btn active w-10 h-10 rounded-full bg-zinc-700 text-zinc-300 hover:bg-zinc-600 flex items-center justify-center" title="Pen (P)"><i class="fas fa-pen"></i></button>
+            <button onclick="setTool('eraser')" id="btn-eraser" class="tool-btn w-10 h-10 rounded-full bg-zinc-700 text-zinc-300 hover:bg-zinc-600 flex items-center justify-center" title="Eraser (E)"><i class="fas fa-eraser"></i></button>
+        </div>
+        <div class="flex items-center gap-3 border-r border-zinc-600 pr-4">
+            <input type="color" id="colorPicker" value="#ffffff" title="Color">
+            <div class="flex flex-col w-24">
+                <div class="flex justify-between text-[10px] text-zinc-400 mb-1">
+                    <span>Size</span>
+                    <span id="sizeValue">5px</span>
+                </div>
+                <input type="range" min="1" max="50" value="5" id="sizeSlider" class="w-full accent-blue-500 h-1 bg-zinc-600 rounded-lg appearance-none cursor-pointer" oninput="updateSize(this.value)">
+            </div>
+        </div>
+        <div class="flex items-center gap-2">
+            <button onclick="undo()" class="w-8 h-8 rounded-full text-zinc-400 hover:text-white hover:bg-zinc-700 flex items-center justify-center transition-colors" title="Undo (Ctrl+Z)"><i class="fas fa-undo"></i></button>
+            <button onclick="redo()" class="w-8 h-8 rounded-full text-zinc-400 hover:text-white hover:bg-zinc-700 flex items-center justify-center transition-colors" title="Redo (Ctrl+Y)"><i class="fas fa-redo"></i></button>
+        </div>
+    </div>
+
+    <!-- Page Controls -->
+    <div class="floating-ui bottom-6 left-6 bg-zinc-800/80 border border-zinc-700 rounded-full shadow-xl px-4 py-2 flex items-center gap-3">
+        <button onclick="scrollToPrevPage()" class="w-8 h-8 rounded-full text-zinc-400 hover:text-white hover:bg-zinc-700 flex items-center justify-center transition-colors"><i class="fas fa-chevron-up"></i></button>
+        <span id="pageIndicator" class="text-zinc-200 text-sm font-medium w-16 text-center select-none">Page 1</span>
+        <button onclick="scrollToNextPage()" class="w-8 h-8 rounded-full text-zinc-400 hover:text-white hover:bg-zinc-700 flex items-center justify-center transition-colors"><i class="fas fa-chevron-down"></i></button>
+        <div class="w-px h-6 bg-zinc-600 mx-1"></div>
+        <button onclick="addPage()" class="w-8 h-8 rounded-full bg-blue-600/20 text-blue-400 hover:bg-blue-600/40 flex items-center justify-center transition-colors"><i class="fas fa-plus"></i></button>
+         <button onclick="deletePage()" class="w-8 h-8 rounded-full hover:bg-red-900/40 text-red-400 hover:text-red-300 flex items-center justify-center transition-colors"><i class="fas fa-times"></i></button>
+    </div>
+
+    <!-- Bottom Actions -->
+    <div class="floating-ui bottom-6 right-6 flex flex-col gap-3">
+        <button onclick="toggleGrid()" class="w-12 h-12 rounded-full bg-zinc-800 border border-zinc-700 text-zinc-300 hover:bg-zinc-700 shadow-lg flex items-center justify-center transition-all"><i class="fas fa-border-all"></i></button>
+        <button onclick="clearCanvas()" class="w-12 h-12 rounded-full bg-red-900/50 border border-red-800 text-red-200 hover:bg-red-900/80 shadow-lg flex items-center justify-center transition-all"><i class="fas fa-eraser"></i></button>
+        <button onclick="downloadCanvas()" class="w-12 h-12 rounded-full bg-blue-600 text-white hover:bg-blue-700 shadow-lg flex items-center justify-center transition-all"><i class="fas fa-download"></i></button>
+    </div>
+
+    <script>
+        const pagesStack = document.getElementById('pages-stack');
+        const scrollView = document.getElementById('scroll-view');
+        const quickWheel = document.getElementById('quick-wheel');
+        const selectionUi = document.getElementById('selection-ui');
+        
+        let state = {
+            mode: 'IDLE', 
+            lastX: 0, lastY: 0,
+            tool: 'pen', color: '#ffffff', baseSize: 5, pressureEnabled: true,
+            isSpaceBarDown: false,
+            startScrollTop: 0, startScrollLeft: 0,
+            pages: [], activePageIndex: 0, 
+            lassoPath: [], lassoSnapshot: null, 
+            selection: { active: false, pageIndex: -1, x: 0, y: 0, w: 0, h: 0, image: null }
+        };
+
+        const MAX_HISTORY = 30;
+        let baseCanvas = document.createElement('canvas');
+        let baseCtx = baseCanvas.getContext('2d');
+
+        function init() {
+            addPage();
+            setupObserver();
+            setupGlobalEvents();
+        }
+
+        function createPageCanvas(index) {
+            const canvas = document.createElement('canvas');
+            canvas.className = 'page-canvas';
+            canvas.id = `page-${index}`;
+            const dpr = window.devicePixelRatio || 1;
+            // Prevent 0 size errors
+            const width = Math.max(1, window.innerWidth);
+            const height = Math.max(1, window.innerHeight);
+            
+            canvas.style.width = `${width}px`;
+            canvas.style.height = `${height}px`;
+            canvas.width = width * dpr;
+            canvas.height = height * dpr;
+            // Removed desynchronized: true to fix disappearing ink issues
+            const ctx = canvas.getContext('2d'); 
+            ctx.scale(dpr, dpr);
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            return { canvas, ctx };
+        }
+
+        function addPage() {
+            if(state.selection.active) stampSelection();
+            const index = state.pages.length;
+            const { canvas, ctx } = createPageCanvas(index);
+            pagesStack.appendChild(canvas);
+            state.pages.push({ id: `page-${index}`, canvas: canvas, ctx: ctx, history: [], historyStep: -1 });
+            saveStateToPage(index);
+            if (index > 0) setTimeout(() => canvas.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
+        }
+
+        function deletePage() {
+            if(state.selection.active) stampSelection();
+            if (state.pages.length <= 1) { clearCanvas(); return; }
+            const indexToDelete = state.activePageIndex;
+            const pageObj = state.pages[indexToDelete];
+            if (pageObj && pageObj.canvas) {
+                pageObj.canvas.remove();
+                state.pages.splice(indexToDelete, 1);
+                state.activePageIndex = Math.max(0, indexToDelete - 1);
+            }
+            updatePageIndicator();
+        }
+
+        function scrollToNextPage() {
+            const nextIndex = state.activePageIndex + 1;
+            if (nextIndex < state.pages.length) state.pages[nextIndex].canvas.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+        function scrollToPrevPage() {
+            const prevIndex = state.activePageIndex - 1;
+            if (prevIndex >= 0) state.pages[prevIndex].canvas.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        function resize() {
+            if(state.selection.active) stampSelection();
+            const dpr = window.devicePixelRatio || 1;
+            // Prevent 0 dimensions error
+            const width = Math.max(1, window.innerWidth);
+            const height = Math.max(1, window.innerHeight);
+            
+            state.pages.forEach(page => {
+                let tempCanvas = null;
+                // Only backup if we have valid dimensions
+                if (page.canvas.width > 0 && page.canvas.height > 0) {
+                    tempCanvas = document.createElement('canvas');
+                    tempCanvas.width = page.canvas.width;
+                    tempCanvas.height = page.canvas.height;
+                    tempCanvas.getContext('2d').drawImage(page.canvas, 0, 0);
+                }
+                
+                page.canvas.style.width = `${width}px`;
+                page.canvas.style.height = `${height}px`;
+                page.canvas.width = width * dpr;
+                page.canvas.height = height * dpr;
+                
+                page.ctx.scale(dpr, dpr);
+                page.ctx.lineCap = 'round';
+                page.ctx.lineJoin = 'round';
+                
+                if (tempCanvas) {
+                    // Draw backup to fit new logical dimensions
+                    page.ctx.drawImage(tempCanvas, 0, 0, width, height);
+                }
+            });
+            baseCanvas.width = width * dpr;
+            baseCanvas.height = height * dpr;
+        }
+        window.addEventListener('resize', resize);
+
+        function setupObserver() {
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        const idx = state.pages.findIndex(p => p.canvas === entry.target);
+                        if (idx !== -1) { state.activePageIndex = idx; updatePageIndicator(); }
+                    }
+                });
+            }, { threshold: 0.5 });
+            const originalAddPage = addPage;
+            addPage = function() { originalAddPage(); observer.observe(state.pages[state.pages.length - 1].canvas); }
+            if(state.pages.length > 0) observer.observe(state.pages[0].canvas);
+        }
+        function updatePageIndicator() { document.getElementById('pageIndicator').textContent = `Page ${state.activePageIndex + 1}`; }
+
+        function setupGlobalEvents() {
+            scrollView.addEventListener('contextmenu', e => e.preventDefault());
+            scrollView.addEventListener('pointerdown', handlePointerDown);
+            scrollView.addEventListener('pointermove', handlePointerMove);
+            scrollView.addEventListener('pointerup', handlePointerUp);
+        }
+
+        function getEventInfo(e) {
+            let targetCanvas = e.target;
+            if (targetCanvas.closest('#selection-ui')) {
+                if (state.selection.pageIndex !== -1) targetCanvas = state.pages[state.selection.pageIndex].canvas;
+            }
+            if (targetCanvas.tagName !== 'CANVAS') return null;
+            const pageIndex = state.pages.findIndex(p => p.canvas === targetCanvas);
+            if (pageIndex === -1) return null;
+            const rect = targetCanvas.getBoundingClientRect();
+            return { pageIndex, x: e.clientX - rect.left, y: e.clientY - rect.top, pressure: e.pressure, rect: rect };
+        }
+
+        function handlePointerDown(e) {
+            if (state.isSpaceBarDown) {
+                state.mode = 'PANNING';
+                state.lastX = e.clientX; state.lastY = e.clientY;
+                state.startScrollTop = scrollView.scrollTop;
+                scrollView.classList.add('cursor-panning');
+                return;
+            }
+            const info = getEventInfo(e);
+            if (e.button === 2 || e.button === 5) {
+                state.activePageIndex = info ? info.pageIndex : state.activePageIndex; 
+                state.mode = 'LASSO_WAIT';
+                state.menuX = e.clientX; state.menuY = e.clientY;
+                if(info) {
+                    const page = state.pages[info.pageIndex];
+                    if(page) state.lassoSnapshot = page.ctx.getImageData(0, 0, page.canvas.width, page.canvas.height);
+                    state.lassoPath = [{x: info.x, y: info.y}];
+                    state.lastX = info.x; state.lastY = info.y;
+                }
+                hideQuickWheel();
+                return;
+            }
+            if (!info) return;
+            state.activePageIndex = info.pageIndex;
+            updatePageIndicator();
+
+            if (state.selection.active && state.selection.pageIndex === info.pageIndex) {
+                const s = state.selection;
+                if (info.x >= s.x && info.x <= s.x + s.w && info.y >= s.y && info.y <= s.y + s.h) {
+                    if (e.buttons === 1) {
+                        liftSelection();
+                        state.mode = 'MOVING_SELECTION';
+                        state.lastX = info.x; state.lastY = info.y;
+                        renderSelectionMove();
+                        return;
+                    }
+                } else stampSelection();
+            } else if (state.selection.active) stampSelection();
+
+            if (e.buttons === 1) {
+                state.mode = 'DRAWING';
+                state.lastX = info.x; state.lastY = info.y;
+                draw(e, info.pageIndex);
+            } else if (e.button === 1) { e.preventDefault(); toggleEraser(); }
+        }
+
+        function handlePointerMove(e) {
+            if (state.mode === 'PANNING') {
+                scrollView.scrollTop = state.startScrollTop - (e.clientY - state.lastY);
+                return;
+            }
+            const info = getEventInfo(e);
+            if (state.mode === 'MOVING_SELECTION') {
+                if (!info || info.pageIndex !== state.selection.pageIndex) return; 
+                state.selection.x += info.x - state.lastX;
+                state.selection.y += info.y - state.lastY;
+                state.lastX = info.x; state.lastY = info.y;
+                updateSelectionVisuals();
+                renderSelectionMove();
+            } else if (state.mode === 'LASSO_WAIT') {
+                if (!info) return;
+                if (Math.hypot(info.x - state.lastX, info.y - state.lastY) > 5) state.mode = 'LASSOING';
+            }
+            if (state.mode === 'LASSOING' && info && info.pageIndex === state.activePageIndex) {
+                const page = state.pages[state.activePageIndex];
+                if(state.lassoSnapshot) page.ctx.putImageData(state.lassoSnapshot, 0, 0);
+                state.lassoPath.push({x: info.x, y: info.y});
+                redrawLassoPath(state.activePageIndex);
+            } else if (state.mode === 'DRAWING' && info && info.pageIndex === state.activePageIndex) draw(e, info.pageIndex);
+        }
+
+        function handlePointerUp(e) {
+            if (state.mode === 'PANNING') {
+                state.mode = 'IDLE'; scrollView.classList.remove('cursor-panning');
+            } else if (state.mode === 'LASSO_WAIT') {
+                state.mode = 'IDLE'; state.lassoSnapshot = null; showQuickWheel(state.menuX, state.menuY);
+            } else if (state.mode === 'LASSOING') {
+                finishLassoSelection(); state.mode = 'IDLE';
+            } else if (state.mode === 'MOVING_SELECTION') {
+                state.mode = 'SELECTION_ACTIVE';
+            } else if (state.mode === 'DRAWING') {
+                state.mode = 'IDLE';
+                const page = state.pages[state.activePageIndex];
+                if (page) { page.ctx.beginPath(); saveStateToPage(state.activePageIndex); }
+            }
+        }
+
+        function draw(e, pageIndex) {
+            const page = state.pages[pageIndex];
+            if (!page) return;
+            const rect = page.canvas.getBoundingClientRect();
+            const events = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
+            events.forEach(event => {
+                const x = event.clientX - rect.left;
+                const y = event.clientY - rect.top;
+                const pressure = (event.pointerType === 'pen' && state.pressureEnabled) ? event.pressure : 0.5;
+                page.ctx.beginPath();
+                page.ctx.moveTo(state.lastX, state.lastY);
+                page.ctx.lineTo(x, y);
+                if (state.tool === 'eraser') {
+                    page.ctx.globalCompositeOperation = 'destination-out';
+                    page.ctx.lineWidth = state.baseSize * 3;
+                } else {
+                    page.ctx.globalCompositeOperation = 'source-over';
+                    page.ctx.strokeStyle = state.color;
+                    page.ctx.lineWidth = Math.max(0.5, event.pointerType === 'pen' ? (state.baseSize * pressure * 2) : state.baseSize);
+                }
+                page.ctx.stroke();
+                state.lastX = x; state.lastY = y;
+            });
+        }
+
+        function redrawLassoPath(pageIndex) {
+            const page = state.pages[pageIndex];
+            if(!page || state.lassoPath.length < 2) return;
+            page.ctx.save();
+            page.ctx.globalCompositeOperation = 'source-over';
+            page.ctx.strokeStyle = '#3b82f6';
+            page.ctx.lineWidth = 1;
+            page.ctx.setLineDash([5, 5]);
+            page.ctx.beginPath();
+            state.lassoPath.forEach((p, i) => { i===0 ? page.ctx.moveTo(p.x, p.y) : page.ctx.lineTo(p.x, p.y); });
+            page.ctx.stroke();
+            page.ctx.restore();
+        }
+
+        function finishLassoSelection() {
+            const page = state.pages[state.activePageIndex];
+            if (state.lassoSnapshot && page) { page.ctx.putImageData(state.lassoSnapshot, 0, 0); state.lassoSnapshot = null; }
+            if (state.lassoPath.length < 3) return;
+
+            let minX=Infinity, minY=Infinity, maxX=-Infinity, maxY=-Infinity;
+            state.lassoPath.forEach(p => {
+                if(p.x < minX) minX=p.x; if(p.x > maxX) maxX=p.x;
+                if(p.y < minY) minY=p.y; if(p.y > maxY) maxY=p.y;
+            });
+            const w = maxX - minX, h = maxY - minY;
+            if (w <= 0 || h <= 0) return;
+            
+            state.selection = { active: true, pageIndex: state.activePageIndex, x: minX, y: minY, w: w, h: h, image: null };
+            state.mode = 'SELECTION_ACTIVE';
+            updateSelectionVisuals();
+        }
+
+        function liftSelection() {
+            if (state.selection.image) return;
+            const page = state.pages[state.selection.pageIndex];
+            const s = state.selection;
+            const dpr = window.devicePixelRatio || 1;
+            
+            // Pixel-perfect bounds
+            let minX=Infinity, minY=Infinity, maxX=-Infinity, maxY=-Infinity;
+            state.lassoPath.forEach(p => {
+                const px = p.x * dpr, py = p.y * dpr;
+                if (px < minX) minX = px; if (px > maxX) maxX = px;
+                if (py < minY) minY = py; if (py > maxY) maxY = py;
+            });
+            const pad = 5 * dpr;
+            minX = Math.floor(minX - pad); minY = Math.floor(minY - pad);
+            maxX = Math.ceil(maxX + pad); maxY = Math.ceil(maxY + pad);
+            const w = maxX - minX, h = maxY - minY;
+            if (w <= 0 || h <= 0) return;
+
+            s.x = minX / dpr; s.y = minY / dpr; s.w = w / dpr; s.h = h / dpr;
+            
+            const selCanvas = document.createElement('canvas');
+            selCanvas.width = w; selCanvas.height = h;
+            const selCtx = selCanvas.getContext('2d');
+            
+            // Draw & Mask
+            selCtx.drawImage(page.canvas, -minX, -minY);
+            selCtx.globalCompositeOperation = 'destination-in';
+            selCtx.beginPath();
+            state.lassoPath.forEach((p, i) => {
+                const tx = (p.x * dpr) - minX, ty = (p.y * dpr) - minY;
+                i===0 ? selCtx.moveTo(tx, ty) : selCtx.lineTo(tx, ty);
+            });
+            selCtx.closePath();
+            selCtx.fillStyle = '#000000';
+            selCtx.fill();
+            
+            s.image = selCanvas;
+            
+            // Cut from Source
+            page.ctx.save();
+            page.ctx.setTransform(1, 0, 0, 1, 0, 0);
+            page.ctx.globalCompositeOperation = 'destination-out';
+            page.ctx.beginPath();
+            state.lassoPath.forEach((p, i) => {
+                const tx = p.x * dpr, ty = p.y * dpr;
+                i===0 ? page.ctx.moveTo(tx, ty) : page.ctx.lineTo(tx, ty);
+            });
+            page.ctx.fillStyle = '#000000';
+            page.ctx.fill();
+            page.ctx.restore();
+            
+            // Update Base Buffer
+            baseCanvas.width = page.canvas.width;
+            baseCanvas.height = page.canvas.height;
+            baseCtx.clearRect(0,0, baseCanvas.width, baseCanvas.height);
+            baseCtx.drawImage(page.canvas, 0, 0);
+        }
+
+        function renderSelectionMove() {
+            if (!state.selection.image) return;
+            const page = state.pages[state.selection.pageIndex];
+            const dpr = window.devicePixelRatio || 1;
+            page.ctx.save();
+            page.ctx.setTransform(1, 0, 0, 1, 0, 0);
+            page.ctx.clearRect(0, 0, page.canvas.width, page.canvas.height);
+            page.ctx.drawImage(baseCanvas, 0, 0);
+            page.ctx.drawImage(state.selection.image, state.selection.x * dpr, state.selection.y * dpr);
+            page.ctx.restore();
+        }
+
+        function updateSelectionVisuals() {
+            const ui = selectionUi;
+            const s = state.selection;
+            const page = state.pages[s.pageIndex];
+            if (s.active && page) {
+                ui.style.left = `${page.canvas.offsetLeft + s.x}px`;
+                ui.style.top = `${page.canvas.offsetTop + s.y}px`;
+                ui.style.width = `${s.w}px`;
+                ui.style.height = `${s.h}px`;
+                ui.classList.add('active');
+            } else ui.classList.remove('active');
+        }
+
+        function stampSelection() {
+            if (!state.selection.active) return;
+            state.selection.active = false; state.selection.image = null; state.lassoPath = [];
+            selectionUi.classList.remove('active');
+            saveStateToPage(state.selection.pageIndex);
+        }
+        
+        function deleteSelection() {
+            if (!state.selection.active) return;
+            liftSelection();
+            const page = state.pages[state.selection.pageIndex];
+            page.ctx.save();
+            page.ctx.setTransform(1, 0, 0, 1, 0, 0);
+            page.ctx.clearRect(0,0, page.canvas.width, page.canvas.height);
+            page.ctx.drawImage(baseCanvas, 0, 0);
+            page.ctx.restore();
+            state.selection.active = false; state.selection.image = null; state.lassoPath = [];
+            selectionUi.classList.remove('active');
+            saveStateToPage(state.activePageIndex);
+        }
+
+        function saveStateToPage(pageIndex) {
+            const page = state.pages[pageIndex];
+            if (!page) return;
+            if (page.historyStep < page.history.length - 1) page.history = page.history.slice(0, page.historyStep + 1);
+            page.history.push(page.canvas.toDataURL());
+            if (page.history.length > MAX_HISTORY) page.history.shift(); else page.historyStep++;
+        }
+
+        function undo() {
+            if (state.selection.active) stampSelection();
+            const page = state.pages[state.activePageIndex];
+            if (page && page.historyStep > 0) { page.historyStep--; restoreState(page); }
+        }
+        function redo() {
+            if (state.selection.active) stampSelection();
+            const page = state.pages[state.activePageIndex];
+            if (page && page.historyStep < page.history.length - 1) { page.historyStep++; restoreState(page); }
+        }
+        function restoreState(page) {
+            const img = new Image(); img.src = page.history[page.historyStep];
+            img.onload = () => {
+                page.ctx.save(); page.ctx.setTransform(1, 0, 0, 1, 0, 0);
+                page.ctx.clearRect(0, 0, page.canvas.width, page.canvas.height);
+                page.ctx.drawImage(img, 0, 0); page.ctx.restore();
+            };
+        }
+        
+        function clearCanvas() {
+            if(state.selection.active) stampSelection();
+            const page = state.pages[state.activePageIndex];
+            if (!page) return;
+            page.ctx.save(); page.ctx.setTransform(1, 0, 0, 1, 0, 0);
+            page.ctx.clearRect(0, 0, page.canvas.width, page.canvas.height);
+            page.ctx.restore();
+            saveStateToPage(state.activePageIndex);
+        }
+        function downloadCanvas() {
+             if(state.selection.active) stampSelection();
+             const page = state.pages[state.activePageIndex];
+             if(!page) return;
+             const link = document.createElement('a'); link.download = `whiteboard-p${state.activePageIndex+1}.png`;
+             link.href = page.canvas.toDataURL(); link.click();
+        }
+        
+        function setTool(t) {
+            if(state.selection.active) stampSelection();
+            state.tool = t;
+            document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
+            document.getElementById(`btn-${t}`).classList.add('active');
+        }
+        function toggleEraser() { setTool(state.tool === 'eraser' ? 'pen' : 'eraser'); }
+        function updateSize(v) { state.baseSize = parseInt(v); document.getElementById('sizeValue').textContent = v + 'px'; }
+        document.getElementById('colorPicker').addEventListener('input', e => { state.color = e.target.value; setTool('pen'); });
+        
+        function showQuickWheel(x, y) { quickWheel.style.left = `${x}px`; quickWheel.style.top = `${y}px`; quickWheel.classList.remove('hidden'); quickWheel.classList.add('active'); }
+        function hideQuickWheel() { quickWheel.classList.add('hidden'); quickWheel.classList.remove('active'); }
+        function setQuickColor(c) { state.color = c; document.getElementById('colorPicker').value = c; setTool('pen'); hideQuickWheel(); }
+        function adjustSize(delta) { let s = state.baseSize + delta; s = Math.max(1, Math.min(50, s)); updateSize(s); document.getElementById('sizeSlider').value = s; }
+        function toggleGrid() { scrollView.classList.toggle('grid-bg'); }
+
+        window.addEventListener('load', init);
+        window.addEventListener('keydown', (e) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); undo(); }
+            if ((e.ctrlKey || e.metaKey) && e.key === 'y') { e.preventDefault(); redo(); }
+            if (e.key === 'Delete' || e.key === 'Backspace') deleteSelection();
+            if (e.code === 'Space' && !state.isSpaceBarDown) { state.isSpaceBarDown = true; if(state.mode === 'IDLE') scrollView.classList.add('cursor-pan'); }
+        });
+        window.addEventListener('keyup', (e) => { if (e.code === 'Space') { state.isSpaceBarDown = false; scrollView.classList.remove('cursor-pan'); } });
+    </script>
+</body>
+</html>
