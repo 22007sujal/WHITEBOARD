@@ -7,6 +7,21 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <!-- Tesseract.js for OCR -->
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+    
+    <!-- Firebase SDKs -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        
+        window.firebaseModules = { initializeApp, getAuth, signInAnonymously, signInWithCustomToken, getFirestore, collection, addDoc, onSnapshot, query, orderBy, serverTimestamp };
+        
+        // Dispatch event to signal firebase is ready
+        window.dispatchEvent(new Event('firebase-ready'));
+    </script>
+
     <style>
         body {
             margin: 0;
@@ -213,12 +228,54 @@
         #gesture-zone {
             touch-action: none;
         }
+
+        /* Collaboration Indicator */
+        .collab-active {
+            box-shadow: 0 0 15px rgba(16, 185, 129, 0.5);
+            border-color: #10b981 !important;
+        }
+        .collab-status-dot {
+            width: 8px; height: 8px; border-radius: 50%; background: #ef4444;
+            display: inline-block; margin-right: 6px;
+        }
+        .collab-status-dot.online { background: #10b981; box-shadow: 0 0 8px #10b981; }
     </style>
 </head>
 <body id="body-bg">
     
     <!-- Loading Screen -->
     <div id="loading-overlay"><i class="fas fa-spinner fa-spin mr-3"></i> Restoring Canvas...</div>
+
+    <!-- Text Result Modal -->
+    <div id="text-result-modal" class="hidden fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+        <div class="bg-zinc-800 border border-zinc-700 rounded-2xl p-6 w-96 shadow-2xl relative animate-[fadeIn_0.2s_ease-out]">
+            <button onclick="closeTextModal()" class="absolute top-4 right-4 text-zinc-400 hover:text-white"><i class="fas fa-times"></i></button>
+            <h2 class="text-xl text-white font-semibold mb-4"><i class="fas fa-align-left mr-2 text-emerald-500"></i>Recognized Text</h2>
+            <div id="text-result-content" class="bg-zinc-900/50 p-4 rounded-lg text-zinc-200 min-h-[100px] max-h-[300px] overflow-y-auto whitespace-pre-wrap font-mono text-sm border border-zinc-700/50"></div>
+            <div class="mt-4 flex justify-end gap-2">
+                <button onclick="closeTextModal()" class="px-4 py-2 text-zinc-400 hover:text-white text-sm font-medium">Close</button>
+                <button onclick="copyTextResult()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-medium shadow-lg transition-colors"><i class="fas fa-copy mr-2"></i>Copy Text</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Share Session Modal -->
+    <div id="share-modal" class="hidden fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+        <div class="bg-zinc-900 border border-zinc-700 rounded-xl p-6 w-full max-w-md shadow-2xl transform scale-100 transition-all">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-bold text-white"><i class="fas fa-broadcast-tower text-green-500 mr-2"></i>Session Live</h3>
+                <button onclick="closeShareModal()" class="text-zinc-400 hover:text-white"><i class="fas fa-times"></i></button>
+            </div>
+            <p class="text-zinc-400 text-sm mb-4">Share this link to invite others to your whiteboard.</p>
+            <div class="flex items-center gap-2 bg-zinc-800 p-2 rounded-lg border border-zinc-700 mb-4">
+                <input type="text" id="share-link-input" readonly class="bg-transparent text-zinc-200 text-sm w-full outline-none px-2 font-mono">
+                <button onclick="copyShareLink()" class="p-2 bg-zinc-700 hover:bg-zinc-600 rounded text-white transition-colors" title="Copy Link"><i class="fas fa-copy"></i></button>
+            </div>
+            <div class="flex justify-end">
+                <button onclick="closeShareModal()" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-medium">Done</button>
+            </div>
+        </div>
+    </div>
 
     <!-- Dedicated Gesture Zone for Page Navigation (LEFT SIDE) - Widened to w-16 -->
     <div id="gesture-zone" class="fixed top-0 left-0 w-16 h-full z-40 flex flex-col justify-center items-center group hover:bg-white/5 transition-colors cursor-pointer" title="Swipe vertically here to change/add pages">
@@ -253,7 +310,19 @@
 
     <!-- Top Toolbar Wrapper with Toggle -->
     <div id="toolbar-wrapper" class="fixed top-0 left-1/2 transform -translate-x-1/2 z-50 flex flex-col items-center pt-4">
-        <div id="toolbar-content" class="bg-zinc-800/80 border border-zinc-700 rounded-full shadow-xl px-4 py-2 flex items-center gap-4 backdrop-blur-md">
+        <div id="toolbar-content" class="bg-zinc-800/80 border border-zinc-700 rounded-full shadow-xl px-4 py-2 flex items-center gap-4 backdrop-blur-md transition-all">
+            <!-- Collaboration Button -->
+            <button onclick="handleCollabButton()" id="btn-collab" class="flex items-center px-3 py-1.5 rounded-full bg-zinc-700 hover:bg-zinc-600 text-zinc-300 text-xs font-medium transition-colors border border-transparent">
+                <span id="collab-dot" class="collab-status-dot"></span>
+                <span id="collab-text">Host</span>
+            </button>
+            <!-- Share Link Button (Hidden by default) -->
+            <button onclick="showShareModal()" id="btn-share-link" class="hidden w-8 h-8 rounded-full text-zinc-300 hover:text-white hover:bg-zinc-700 flex items-center justify-center transition-colors" title="Share Session Link">
+                <i class="fas fa-share-alt"></i>
+            </button>
+
+            <div class="w-px h-6 bg-zinc-600"></div>
+
             <div class="flex items-center gap-2 border-r border-zinc-600 pr-4">
                 <button onclick="setTool('pen')" id="btn-pen" class="tool-btn active w-10 h-10 rounded-full bg-zinc-700 text-zinc-300 hover:bg-zinc-600 flex items-center justify-center" title="Pen (P)"><i class="fas fa-pen"></i></button>
                 <button onclick="setTool('eraser')" id="btn-eraser" class="tool-btn w-10 h-10 rounded-full bg-zinc-700 text-zinc-300 hover:bg-zinc-600 flex items-center justify-center" title="Eraser (E)"><i class="fas fa-eraser"></i></button>
@@ -307,6 +376,7 @@
         <!-- Content -->
         <div id="right-toolbar-content" class="flex flex-col gap-3 transition-opacity duration-200">
             <button onclick="toggleGrid()" class="w-12 h-12 rounded-full bg-zinc-800 border border-zinc-700 text-zinc-300 hover:bg-zinc-700 shadow-lg flex items-center justify-center transition-all" title="Toggle Grid"><i class="fas fa-border-all"></i></button>
+            <button onclick="convertInkToText()" class="w-12 h-12 rounded-full bg-emerald-600 text-white hover:bg-emerald-700 shadow-lg flex items-center justify-center transition-all" title="Convert to Text"><i class="fas fa-font"></i></button>
             <button onclick="clearCanvas()" class="w-12 h-12 rounded-full bg-red-900/50 border border-red-800 text-red-200 hover:bg-red-900/80 shadow-lg flex items-center justify-center transition-all" title="Clear Page"><i class="fas fa-trash-alt"></i></button>
             <button onclick="downloadPDF()" class="w-12 h-12 rounded-full bg-indigo-600 text-white hover:bg-indigo-700 shadow-lg flex items-center justify-center transition-all" title="Download All as PDF"><i class="fas fa-file-pdf"></i></button>
             <button onclick="downloadCanvas()" class="w-12 h-12 rounded-full bg-blue-600 text-white hover:bg-blue-700 shadow-lg flex items-center justify-center transition-all" title="Download Image"><i class="fas fa-image"></i></button>
@@ -320,6 +390,14 @@
         const selectionUi = document.getElementById('selection-ui');
         const gestureZone = document.getElementById('gesture-zone');
         
+        // Collaboration Globals
+        let db = null;
+        let auth = null;
+        let userId = null;
+        let unsubscribeStrokes = null;
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-wb';
+        let currentSessionId = null;
+
         let state = {
             mode: 'IDLE', 
             lastX: 0, lastY: 0,
@@ -329,7 +407,11 @@
             pages: [], activePageIndex: 0, 
             lassoPath: [], lassoSnapshot: null, 
             selection: { active: false, pageIndex: -1, x: 0, y: 0, w: 0, h: 0, image: null },
-            strokeStartX: 0, strokeStartY: 0, strokeStartTime: 0 // Track stroke gesture
+            strokeStartX: 0, strokeStartY: 0, strokeStartTime: 0, // Track stroke gesture
+            
+            // Collab State
+            isCollaborating: false,
+            currentStrokePoints: [] 
         };
 
         const MAX_HISTORY = 30;
@@ -338,13 +420,30 @@
         let saveTimeout = null;
 
         function init() {
-            // Check for saved data
-            if (localStorage.getItem('wb_data')) {
+            // Check for Session Param in URL
+            const urlParams = new URLSearchParams(window.location.search);
+            const sessionParam = urlParams.get('session');
+            
+            // Check for saved data only if not joining a session
+            if (!sessionParam && localStorage.getItem('wb_data')) {
                 loadFromStorage();
             } else {
                 addPage();
                 document.getElementById('loading-overlay').classList.add('fade-out');
             }
+
+            if (sessionParam) {
+                // Auto-join if session present
+                currentSessionId = sessionParam;
+                document.getElementById('collab-text').textContent = "Join Session...";
+                // Wait slightly for Firebase modules to load
+                window.addEventListener('firebase-ready', () => {
+                    initCollaboration(currentSessionId); 
+                });
+                // Fallback in case event fired before listener
+                if(window.firebaseModules) initCollaboration(currentSessionId);
+            }
+
             setupObserver();
             setupGlobalEvents();
         }
@@ -390,6 +489,9 @@
         }
 
         function saveToStorage() {
+            // Don't overwrite local storage if we are a guest in a session
+            if (state.isCollaborating && currentSessionId) return;
+
             try {
                 // Save current canvas state as DataURL for each page
                 const data = {
@@ -397,10 +499,8 @@
                     pages: state.pages.map(p => p.canvas.toDataURL())
                 };
                 localStorage.setItem('wb_data', JSON.stringify(data));
-                console.log('Saved to storage');
             } catch (e) {
                 console.warn('Local Storage quota exceeded. Could not save.', e);
-                // Optionally warn user: alert("Storage full! New strokes won't be saved.");
             }
         }
 
@@ -626,6 +726,15 @@
             if (e.buttons === 1) {
                 state.mode = 'DRAWING';
                 state.lastX = info.x; state.lastY = info.y;
+                
+                // Track Gesture Start
+                state.strokeStartX = e.clientX;
+                state.strokeStartY = e.clientY;
+                state.strokeStartTime = Date.now();
+
+                // Initialize Stroke Recording
+                state.currentStrokePoints = [{ x: info.x, y: info.y, p: info.pressure || 0.5 }];
+
                 draw(e, info.pageIndex);
             } else if (e.button === 1) { e.preventDefault(); toggleEraser(); }
         }
@@ -691,6 +800,23 @@
                     page.ctx.beginPath(); 
                     saveStateToPage(state.activePageIndex); 
                     triggerSave(); // Save to LocalStorage
+
+                    // --- Collaboration Send ---
+                    if (state.isCollaborating && userId && state.currentStrokePoints.length > 1) {
+                        const { collection, addDoc, serverTimestamp } = window.firebaseModules;
+                        // Use session ID if active, otherwise fallback to 'default' if logic allows (but we gate sending behind isCollaborating)
+                        const session = currentSessionId || 'default';
+                        addDoc(collection(db, 'artifacts', appId, 'sessions', session, 'strokes'), {
+                            userId: userId,
+                            points: state.currentStrokePoints,
+                            color: state.color,
+                            baseSize: state.baseSize,
+                            tool: state.tool,
+                            pageIndex: state.activePageIndex,
+                            createdAt: serverTimestamp()
+                        }).catch(err => console.error("Send Error", err));
+                    }
+                    state.currentStrokePoints = []; // Reset
                 }
             }
         }
@@ -704,6 +830,12 @@
                 const x = event.clientX - rect.left;
                 const y = event.clientY - rect.top;
                 const pressure = (event.pointerType === 'pen' && state.pressureEnabled) ? event.pressure : 0.5;
+                
+                // Record Point
+                if (state.mode === 'DRAWING') {
+                    state.currentStrokePoints.push({ x: Math.round(x), y: Math.round(y), p: parseFloat(pressure.toFixed(2)) });
+                }
+
                 page.ctx.beginPath();
                 page.ctx.moveTo(state.lastX, state.lastY);
                 page.ctx.lineTo(x, y);
@@ -807,92 +939,266 @@
             baseCtx.drawImage(page.canvas, 0, 0);
         }
 
-        function selectAll() {
-            if (state.selection.active) stampSelection();
+        async function downloadPDF() {
+            if(state.selection.active) stampSelection();
+            const { jsPDF } = window.jspdf;
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+            const orientation = width > height ? 'l' : 'p';
+            
+            const pdf = new jsPDF({
+                orientation: orientation,
+                unit: 'px',
+                format: [width, height]
+            });
+            
+            for (let i = 0; i < state.pages.length; i++) {
+                if (i > 0) pdf.addPage([width, height], orientation);
+                const page = state.pages[i];
+                const composite = getCompositedCanvas(page.canvas);
+                const imgData = composite.toDataURL('image/jpeg', 0.95);
+                pdf.addImage(imgData, 'JPEG', 0, 0, width, height);
+            }
+            pdf.save('whiteboard-export.pdf');
+        }
+
+        async function convertInkToText() {
+            if(state.selection.active) stampSelection();
             const page = state.pages[state.activePageIndex];
-            if (!page) return;
+            if(!page) return;
 
-            const dpr = window.devicePixelRatio || 1;
-            const w = page.canvas.width / dpr;
-            const h = page.canvas.height / dpr;
+            const loading = document.getElementById('loading-overlay');
+            const originalText = loading.innerHTML;
+            loading.innerHTML = '<i class="fas fa-spinner fa-spin mr-3"></i> Processing Text...';
+            loading.classList.remove('fade-out');
 
-            // 1. Create selection image (copy of current page)
-            const selCanvas = document.createElement('canvas');
-            selCanvas.width = page.canvas.width; 
-            selCanvas.height = page.canvas.height;
-            const selCtx = selCanvas.getContext('2d');
-            selCtx.drawImage(page.canvas, 0, 0);
+            try {
+                // Prepare Image for OCR (Black text on white background)
+                const tempCanvas = document.createElement('canvas');
+                tempCanvas.width = page.canvas.width;
+                tempCanvas.height = page.canvas.height;
+                const tCtx = tempCanvas.getContext('2d');
 
-            // 2. Set State
-            state.selection = {
-                active: true,
-                pageIndex: state.activePageIndex,
-                x: 0,
-                y: 0,
-                w: w,
-                h: h,
-                image: selCanvas
-            };
+                // 1. Draw original ink (white)
+                tCtx.drawImage(page.canvas, 0, 0);
+                
+                // 2. Turn ink black using source-in composition
+                // This keeps opacity of ink but changes color to black
+                tCtx.globalCompositeOperation = 'source-in';
+                tCtx.fillStyle = '#000000';
+                tCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
 
-            // 3. Clear original page
-            page.ctx.clearRect(0, 0, page.canvas.width, page.canvas.height);
+                // 3. Composite onto white background
+                const finalCanvas = document.createElement('canvas');
+                finalCanvas.width = page.canvas.width;
+                finalCanvas.height = page.canvas.height;
+                const fCtx = finalCanvas.getContext('2d');
+                fCtx.fillStyle = '#ffffff';
+                fCtx.fillRect(0, 0, finalCanvas.width, finalCanvas.height);
+                fCtx.drawImage(tempCanvas, 0, 0);
 
-            // 4. Update Base Buffer (Clear it, as there is nothing behind the selection now)
-            baseCanvas.width = page.canvas.width;
-            baseCanvas.height = page.canvas.height;
-            baseCtx.clearRect(0, 0, baseCanvas.width, baseCanvas.height);
+                // Run Tesseract
+                const { data: { text } } = await Tesseract.recognize(finalCanvas, 'eng');
+                
+                document.getElementById('text-result-content').textContent = text.trim() || "No text detected.";
+                document.getElementById('text-result-modal').classList.remove('hidden');
 
-            state.mode = 'SELECTION_ACTIVE';
-            updateSelectionVisuals();
+            } catch (e) {
+                console.error(e);
+                alert("Failed to recognize text. Please try again.");
+            } finally {
+                loading.classList.add('fade-out');
+                setTimeout(() => loading.innerHTML = originalText, 500);
+            }
         }
 
-        function renderSelectionMove() {
-            if (!state.selection.image) return;
-            const page = state.pages[state.selection.pageIndex];
-            const dpr = window.devicePixelRatio || 1;
-            page.ctx.save();
-            page.ctx.setTransform(1, 0, 0, 1, 0, 0);
-            page.ctx.clearRect(0, 0, page.canvas.width, page.canvas.height);
-            page.ctx.drawImage(baseCanvas, 0, 0);
-            page.ctx.drawImage(state.selection.image, state.selection.x * dpr, state.selection.y * dpr);
-            page.ctx.restore();
+        // --- Collaboration Logic ---
+
+        function handleCollabButton() {
+            if (state.isCollaborating) {
+                // If already collaborating (host or guest), show share modal
+                showShareModal();
+            } else {
+                // If not, start hosting a new session
+                startHosting();
+            }
         }
 
-        function updateSelectionVisuals() {
-            const ui = selectionUi;
-            const s = state.selection;
-            const page = state.pages[s.pageIndex];
-            if (s.active && page) {
-                ui.style.left = `${page.canvas.offsetLeft + s.x}px`;
-                ui.style.top = `${page.canvas.offsetTop + s.y}px`;
-                ui.style.width = `${s.w}px`;
-                ui.style.height = `${s.h}px`;
-                ui.classList.add('active');
-            } else ui.classList.remove('active');
+        async function startHosting() {
+            if (!window.firebaseModules) {
+                alert("Firebase modules loading... please wait.");
+                return;
+            }
+            
+            // Generate Session ID
+            currentSessionId = crypto.randomUUID();
+            
+            // Update URL without reload
+            try {
+                const newUrl = '?session=' + currentSessionId;
+                window.history.pushState({ path: newUrl }, '', newUrl);
+            } catch (e) {
+                console.log("Unable to update URL history (likely in a sandbox/preview environment). Session ID generated internally.");
+            }
+            
+            // Initialize Firebase connection
+            await initCollaboration(currentSessionId);
+            
+            // Show Share UI immediately
+            showShareModal();
         }
 
-        function stampSelection() {
-            if (!state.selection.active) return;
-            state.selection.active = false; state.selection.image = null; state.lassoPath = [];
-            selectionUi.classList.remove('active');
-            saveStateToPage(state.selection.pageIndex);
-            triggerSave();
+        async function initCollaboration(sessionId) {
+            if (state.isCollaborating) return;
+
+            const btn = document.getElementById('btn-collab');
+            const dot = document.getElementById('collab-dot');
+            const txt = document.getElementById('collab-text');
+            const shareBtn = document.getElementById('btn-share-link');
+            
+            txt.textContent = "Connecting...";
+            
+            try {
+                if (!db) {
+                    const { initializeApp, getAuth, signInAnonymously, signInWithCustomToken, getFirestore } = window.firebaseModules;
+                    const firebaseConfig = JSON.parse(__firebase_config);
+                    const app = initializeApp(firebaseConfig);
+                    auth = getAuth(app);
+                    db = getFirestore(app);
+                    
+                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                        await signInWithCustomToken(auth, __initial_auth_token);
+                    } else {
+                        await signInAnonymously(auth);
+                    }
+                    userId = auth.currentUser.uid;
+                }
+
+                setupRealtimeListener(sessionId);
+                
+                state.isCollaborating = true;
+                txt.textContent = "Live";
+                dot.classList.add('online');
+                document.getElementById('toolbar-content').classList.add('collab-active');
+                shareBtn.classList.remove('hidden'); // Show share button next to Live status
+                
+            } catch (e) {
+                console.error("Collab Error:", e);
+                txt.textContent = "Error";
+                setTimeout(() => { txt.textContent = "Host"; }, 2000);
+            }
+        }
+
+        function setupRealtimeListener(sessionId) {
+            const { collection, onSnapshot } = window.firebaseModules;
+            // Use specific session path
+            const strokesCollection = collection(db, 'artifacts', appId, 'sessions', sessionId, 'strokes');
+
+            unsubscribeStrokes = onSnapshot(strokesCollection, (snapshot) => {
+                snapshot.docChanges().forEach((change) => {
+                    if (change.type === "added") {
+                        const stroke = change.doc.data();
+                        if (stroke.userId !== userId) {
+                            drawRemoteStroke(stroke);
+                        }
+                    }
+                });
+            }, (error) => {
+                console.error("Sync Error:", error);
+            });
+        }
+
+        function drawRemoteStroke(stroke) {
+            // Ensure page exists
+            while (state.pages.length <= stroke.pageIndex) {
+                addPage(false); 
+            }
+            
+            const page = state.pages[stroke.pageIndex];
+            const ctx = page.ctx;
+            const points = stroke.points;
+            if (!points || points.length < 2) return;
+
+            ctx.save();
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            
+            if (stroke.tool === 'eraser') {
+                ctx.globalCompositeOperation = 'destination-out';
+                ctx.lineWidth = stroke.baseSize * 3;
+            } else {
+                ctx.globalCompositeOperation = 'source-over';
+                ctx.strokeStyle = stroke.color;
+            }
+
+            for (let i = 1; i < points.length; i++) {
+                const p1 = points[i-1];
+                const p2 = points[i];
+                const pressure = p2.p || 0.5;
+                
+                ctx.beginPath();
+                ctx.moveTo(p1.x, p1.y);
+                ctx.lineTo(p2.x, p2.y);
+                
+                if (stroke.tool !== 'eraser') {
+                    ctx.lineWidth = Math.max(0.5, stroke.baseSize * pressure * 2);
+                }
+                ctx.stroke();
+            }
+            ctx.restore();
+        }
+
+        function showShareModal() {
+            const input = document.getElementById('share-link-input');
+            let url = window.location.href;
+            
+            // If the URL in the address bar doesn't have the session (because pushState failed), append it
+            if (currentSessionId && !url.includes(currentSessionId)) {
+                const separator = url.includes('?') ? '&' : '?';
+                url = url + separator + 'session=' + currentSessionId;
+            }
+            
+            input.value = url;
+            document.getElementById('share-modal').classList.remove('hidden');
+        }
+
+        function closeShareModal() {
+            document.getElementById('share-modal').classList.add('hidden');
+        }
+
+        function copyShareLink() {
+            const input = document.getElementById('share-link-input');
+            input.select();
+            document.execCommand('copy'); 
+            // visual feedback could be added here
+        }
+
+        function closeTextModal() {
+            document.getElementById('text-result-modal').classList.add('hidden');
+        }
+        function copyTextResult() {
+            const text = document.getElementById('text-result-content').textContent;
+            navigator.clipboard.writeText(text);
+            closeTextModal();
         }
         
-        function deleteSelection() {
-            if (!state.selection.active) return;
-            liftSelection();
-            const page = state.pages[state.selection.pageIndex];
-            page.ctx.save();
-            page.ctx.setTransform(1, 0, 0, 1, 0, 0);
-            page.ctx.clearRect(0,0, page.canvas.width, page.canvas.height);
-            page.ctx.drawImage(baseCanvas, 0, 0);
-            page.ctx.restore();
-            state.selection.active = false; state.selection.image = null; state.lassoPath = [];
-            selectionUi.classList.remove('active');
-            saveStateToPage(state.activePageIndex);
-            triggerSave();
+        function setTool(t) {
+            if(state.selection.active) stampSelection();
+            state.tool = t;
+            document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
+            document.getElementById(`btn-${t}`).classList.add('active');
         }
+        function toggleEraser() { setTool(state.tool === 'eraser' ? 'pen' : 'eraser'); }
+        function updateSize(v) { state.baseSize = parseInt(v); document.getElementById('sizeValue').textContent = v + 'px'; }
+        document.getElementById('colorPicker').addEventListener('input', e => { state.color = e.target.value; setTool('pen'); });
+        
+        function showQuickWheel(x, y) { quickWheel.style.left = `${x}px`; quickWheel.style.top = `${y}px`; quickWheel.classList.remove('hidden'); quickWheel.classList.add('active'); }
+        function hideQuickWheel() { quickWheel.classList.add('hidden'); quickWheel.classList.remove('active'); }
+        function setQuickColor(c) { state.color = c; document.getElementById('colorPicker').value = c; setTool('pen'); hideQuickWheel(); }
+        function adjustSize(delta) { let s = state.baseSize + delta; s = Math.max(1, Math.min(50, s)); updateSize(s); document.getElementById('sizeSlider').value = s; }
+        function toggleGrid() { scrollView.classList.toggle('grid-bg'); }
+
+        // --- RESTORED MISSING UTILITY FUNCTIONS ---
 
         function saveStateToPage(pageIndex) {
             const page = state.pages[pageIndex];
@@ -911,6 +1217,7 @@
                 triggerSave();
             }
         }
+
         function redo() {
             if (state.selection.active) stampSelection();
             const page = state.pages[state.activePageIndex];
@@ -920,9 +1227,9 @@
                 triggerSave();
             }
         }
+
         function restoreState(page) {
             if (!page.history[page.historyStep]) {
-                // Fallback for empty/new pages
                 page.ctx.clearRect(0, 0, page.canvas.width, page.canvas.height);
                 return;
             }
@@ -967,44 +1274,88 @@
             link.click();
         }
 
-        async function downloadPDF() {
-            if(state.selection.active) stampSelection();
-            const { jsPDF } = window.jspdf;
-            const width = window.innerWidth;
-            const height = window.innerHeight;
-            const orientation = width > height ? 'l' : 'p';
-            
-            const pdf = new jsPDF({
-                orientation: orientation,
-                unit: 'px',
-                format: [width, height]
-            });
-            
-            for (let i = 0; i < state.pages.length; i++) {
-                if (i > 0) pdf.addPage([width, height], orientation);
-                const page = state.pages[i];
-                const composite = getCompositedCanvas(page.canvas);
-                const imgData = composite.toDataURL('image/jpeg', 0.95);
-                pdf.addImage(imgData, 'JPEG', 0, 0, width, height);
+        function deleteSelection() {
+            if (!state.selection.active) return;
+            liftSelection();
+            state.selection.active = false; state.selection.image = null; state.lassoPath = [];
+            selectionUi.classList.remove('active');
+            saveStateToPage(state.activePageIndex);
+            triggerSave();
+        }
+
+        function stampSelection() {
+            if (!state.selection.active) return;
+            if (state.selection.image) {
+                const page = state.pages[state.selection.pageIndex];
+                const dpr = window.devicePixelRatio || 1;
+                page.ctx.drawImage(state.selection.image, state.selection.x * dpr, state.selection.y * dpr);
             }
-            pdf.save('whiteboard-export.pdf');
+            state.selection.active = false; state.selection.image = null; state.lassoPath = [];
+            selectionUi.classList.remove('active');
+            saveStateToPage(state.selection.pageIndex);
+            triggerSave();
         }
-        
-        function setTool(t) {
-            if(state.selection.active) stampSelection();
-            state.tool = t;
-            document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
-            document.getElementById(`btn-${t}`).classList.add('active');
+
+        function updateSelectionVisuals() {
+            const ui = selectionUi;
+            const s = state.selection;
+            const page = state.pages[s.pageIndex];
+            if (s.active && page) {
+                ui.style.left = `${page.canvas.offsetLeft + s.x}px`;
+                ui.style.top = `${page.canvas.offsetTop + s.y}px`;
+                ui.style.width = `${s.w}px`;
+                ui.style.height = `${s.h}px`;
+                ui.classList.add('active');
+            } else ui.classList.remove('active');
         }
-        function toggleEraser() { setTool(state.tool === 'eraser' ? 'pen' : 'eraser'); }
-        function updateSize(v) { state.baseSize = parseInt(v); document.getElementById('sizeValue').textContent = v + 'px'; }
-        document.getElementById('colorPicker').addEventListener('input', e => { state.color = e.target.value; setTool('pen'); });
-        
-        function showQuickWheel(x, y) { quickWheel.style.left = `${x}px`; quickWheel.style.top = `${y}px`; quickWheel.classList.remove('hidden'); quickWheel.classList.add('active'); }
-        function hideQuickWheel() { quickWheel.classList.add('hidden'); quickWheel.classList.remove('active'); }
-        function setQuickColor(c) { state.color = c; document.getElementById('colorPicker').value = c; setTool('pen'); hideQuickWheel(); }
-        function adjustSize(delta) { let s = state.baseSize + delta; s = Math.max(1, Math.min(50, s)); updateSize(s); document.getElementById('sizeSlider').value = s; }
-        function toggleGrid() { scrollView.classList.toggle('grid-bg'); }
+
+        function renderSelectionMove() {
+            if (!state.selection.image) return;
+            const page = state.pages[state.selection.pageIndex];
+            const dpr = window.devicePixelRatio || 1;
+            page.ctx.save();
+            page.ctx.setTransform(1, 0, 0, 1, 0, 0);
+            page.ctx.clearRect(0, 0, page.canvas.width, page.canvas.height);
+            page.ctx.drawImage(baseCanvas, 0, 0);
+            page.ctx.drawImage(state.selection.image, state.selection.x * dpr, state.selection.y * dpr);
+            page.ctx.restore();
+        }
+
+        function selectAll() {
+            if (state.selection.active) stampSelection();
+            const page = state.pages[state.activePageIndex];
+            if (!page) return;
+
+            const dpr = window.devicePixelRatio || 1;
+            const w = page.canvas.width / dpr;
+            const h = page.canvas.height / dpr;
+
+            const selCanvas = document.createElement('canvas');
+            selCanvas.width = page.canvas.width; 
+            selCanvas.height = page.canvas.height;
+            const selCtx = selCanvas.getContext('2d');
+            selCtx.drawImage(page.canvas, 0, 0);
+
+            state.selection = {
+                active: true,
+                pageIndex: state.activePageIndex,
+                x: 0,
+                y: 0,
+                w: w,
+                h: h,
+                image: selCanvas
+            };
+
+            page.ctx.clearRect(0, 0, page.canvas.width, page.canvas.height);
+
+            baseCanvas.width = page.canvas.width;
+            baseCanvas.height = page.canvas.height;
+            let baseCtx = baseCanvas.getContext('2d');
+            baseCtx.clearRect(0, 0, baseCanvas.width, baseCanvas.height);
+
+            state.mode = 'SELECTION_ACTIVE';
+            updateSelectionVisuals();
+        }
 
         window.addEventListener('load', init);
         window.addEventListener('keydown', (e) => {
