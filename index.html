@@ -162,52 +162,35 @@
         .cursor-panning { cursor: grabbing !important; }
         ::-webkit-scrollbar { width: 0px; background: transparent; }
 
-        /* Top Toolbar Animations */
-        #toolbar-wrapper {
+        /* --- TOOLBAR ANIMATIONS & POSITIONS --- */
+
+        /* TOP ACTION BAR (Formerly Right Toolbar) */
+        #right-toolbar-wrapper {
             transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            width: 100%;
-            pointer-events: none;
+            width: auto;
         }
-        #toolbar-wrapper > * { pointer-events: auto; }
-        
-        #toolbar-wrapper.collapsed {
-            transform: translate(-50%, -100%);
+        #right-toolbar-wrapper.collapsed {
+            transform: translate(-50%, -100%); /* Move Up */
         }
-        #toolbar-wrapper.collapsed #toggle-arrow {
+        #right-toolbar-wrapper.collapsed #right-toggle-arrow {
             transform: rotate(180deg);
-            top: 100%; 
             background-color: #ffffff;
             border-color: #e4e4e7;
             color: #71717a;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-        }
-        #toolbar-content {
-            transition: opacity 0.2s;
-        }
-        #toolbar-wrapper.collapsed #toolbar-content {
-            opacity: 0;
-            pointer-events: none;
         }
 
-        /* Right Toolbar Animations */
-        #right-toolbar-wrapper {
+        /* RIGHT MAIN BAR (Formerly Top Toolbar) */
+        #toolbar-wrapper {
             transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
-        #right-toolbar-wrapper.collapsed {
-            transform: translateX(calc(100% + 1.5rem));
+        #toolbar-wrapper.collapsed {
+            transform: translate(100%, -50%); /* Move Right */
         }
-        #right-toolbar-wrapper.collapsed #right-toggle-arrow {
+        #toolbar-wrapper.collapsed #toggle-arrow {
             transform: translateY(-50%) rotate(180deg);
             background-color: #ffffff;
             border-color: #e4e4e7;
             color: #71717a;
-        }
-        #right-toolbar-content {
-            transition: opacity 0.2s;
-        }
-        #right-toolbar-wrapper.collapsed #right-toolbar-content {
-            opacity: 0;
-            pointer-events: none;
         }
 
         /* Page Controls (Bottom Left) Animations */
@@ -223,14 +206,7 @@
             border-color: #e4e4e7;
             color: #71717a;
         }
-        #page-controls-content {
-            transition: opacity 0.2s;
-        }
-        #page-controls-wrapper.collapsed #page-controls-content {
-            opacity: 0;
-            pointer-events: none;
-        }
-
+        
         /* Loading indicator */
         #loading-overlay {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
@@ -289,15 +265,31 @@
             pointer-events: none;
         }
 
+        /* FOCUS MODE */
+        .focus-mode #toolbar-wrapper,
+        .focus-mode #right-toolbar-wrapper,
+        .focus-mode #page-controls-wrapper,
+        .focus-mode #participants-panel,
+        .focus-mode #gesture-zone {
+            opacity: 0;
+            pointer-events: none;
+            transform: scale(0.95);
+        }
+        /* Keep focus button visible */
+        .focus-mode #focus-btn {
+            background-color: #3b82f6;
+            color: white;
+            border-color: #3b82f6;
+        }
+
         /* --- MOBILE RESPONSIVE STYLES --- */
         @media (max-width: 640px) {
             #toolbar-content {
-                padding: 0.5rem 0.75rem;
-                gap: 0.5rem;
-                max-width: 98vw;
-                height: 56px;
-                border-radius: 16px;
-                overflow-x: auto;
+                /* Reset for vertical layout */
+                max-width: none;
+                height: auto;
+                max-height: 80vh;
+                overflow-y: auto;
                 -webkit-overflow-scrolling: touch;
             }
 
@@ -317,7 +309,8 @@
             }
 
             #size-container {
-                width: 60px !important;
+                width: auto !important;
+                height: 100px; /* Vertical slider */
             }
 
             #page-controls-wrapper {
@@ -328,12 +321,11 @@
                 z-index: 55;
             }
 
+            /* Right wrapper is now Top wrapper */
             #right-toolbar-wrapper {
-                bottom: 1rem;
-                right: 0.5rem;
-                transform: scale(0.9);
-                transform-origin: bottom right;
-                z-index: 55;
+                top: 0.5rem;
+                transform: scale(0.9) translateX(-50%);
+                transform-origin: top center;
             }
 
             #participants-panel {
@@ -401,6 +393,11 @@
         </div>
     </div>
 
+    <!-- Focus Mode Button (Top Left) -->
+    <button onclick="toggleFocusMode()" id="focus-btn" class="fixed top-6 left-6 z-[60] w-10 h-10 rounded-full bg-white border border-zinc-200 text-zinc-600 hover:text-zinc-900 shadow-lg flex items-center justify-center transition-all duration-300" title="Focus Mode">
+        <i class="fas fa-expand"></i>
+    </button>
+
     <!-- Dedicated Gesture Zone for Page Navigation (LEFT SIDE) - Hidden on small mobile screens to prevent accidental swipes -->
     <div id="gesture-zone" class="fixed top-0 left-0 w-8 md:w-16 h-full z-40 flex flex-col justify-center items-center group hover:bg-white/5 transition-colors cursor-pointer hidden sm:flex" title="Swipe vertically here to change/add pages">
         <div class="h-16 w-1 rounded-full bg-zinc-400/30 group-hover:bg-zinc-400/60 transition-colors mb-2"></div>
@@ -432,8 +429,8 @@
         <button onclick="setTool('eraser')" class="wheel-btn absolute bottom-[15%] left-[15%]" title="Eraser"><i class="fas fa-eraser"></i></button>
     </div>
 
-    <!-- Participants Panel (Floating Top Right) -->
-    <div id="participants-panel" class="hidden-panel fixed top-20 right-6 z-40 bg-white/90 border border-zinc-200 rounded-xl p-4 w-64 shadow-xl backdrop-blur-md">
+    <!-- Participants Panel (Floating Top Right - Pushed down slightly) -->
+    <div id="participants-panel" class="hidden-panel fixed top-24 right-20 z-40 bg-white/90 border border-zinc-200 rounded-xl p-4 w-64 shadow-xl backdrop-blur-md">
         <div class="flex justify-between items-center mb-3 border-b border-zinc-100 pb-2">
             <h4 class="text-zinc-700 font-semibold text-sm">Participants</h4>
             <span id="participant-count-badge" class="bg-zinc-200 text-zinc-700 text-xs px-2 py-0.5 rounded-full">1</span>
@@ -443,35 +440,57 @@
         </ul>
     </div>
 
-    <!-- Top Toolbar Wrapper with Toggle -->
-    <div id="toolbar-wrapper" class="fixed top-0 left-1/2 transform -translate-x-1/2 z-50 flex flex-col items-center pt-4">
-        <div id="toolbar-content" class="bg-white/90 border border-zinc-200 rounded-full shadow-lg px-4 py-2 flex items-center gap-2 md:gap-4 backdrop-blur-md transition-all">
+    <!-- ACTION TOOLBAR (Formerly Right Toolbar) - Now Top Center -->
+    <div id="right-toolbar-wrapper" class="fixed top-0 left-1/2 transform -translate-x-1/2 z-50 pt-4 flex flex-col items-center">
+         <div id="right-toolbar-content" class="bg-white/90 border border-zinc-200 rounded-full shadow-lg px-4 py-2 flex items-center gap-3 backdrop-blur-md transition-all">
+            <button onclick="toggleGrid()" class="w-10 h-10 rounded-full bg-white border border-zinc-200 text-zinc-600 hover:bg-zinc-50 shadow-sm flex items-center justify-center transition-all" title="Toggle Grid"><i class="fas fa-border-all"></i></button>
+            <button onclick="convertInkToText()" class="w-10 h-10 rounded-full bg-emerald-600 text-white hover:bg-emerald-700 shadow-md flex items-center justify-center transition-all" title="Convert to Text"><i class="fas fa-font"></i></button>
+            <button onclick="clearCanvas()" class="w-10 h-10 rounded-full bg-red-50 border border-red-200 text-red-500 hover:bg-red-100 shadow-sm flex items-center justify-center transition-all" title="Clear Page"><i class="fas fa-trash-alt"></i></button>
+            <button onclick="downloadPDF()" class="w-10 h-10 rounded-full bg-indigo-600 text-white hover:bg-indigo-700 shadow-md flex items-center justify-center transition-all" title="Download All as PDF"><i class="fas fa-file-pdf"></i></button>
+            <button onclick="downloadCanvas()" class="w-10 h-10 rounded-full bg-blue-600 text-white hover:bg-blue-700 shadow-md flex items-center justify-center transition-all" title="Download Image"><i class="fas fa-image"></i></button>
+         </div>
+         <!-- Toggle Arrow for Top Bar -->
+         <button onclick="toggleRightToolbar()" id="right-toggle-arrow" class="w-10 h-6 bg-white/90 border-x border-b border-zinc-200 rounded-b-lg text-zinc-500 hover:text-zinc-800 flex items-center justify-center backdrop-blur-md shadow-sm transition-all mt-[-1px]">
+             <i class="fas fa-chevron-up text-xs"></i>
+         </button>
+    </div>
+
+    <!-- MAIN TOOLBAR (Formerly Top Toolbar) - Now Right Center -->
+    <div id="toolbar-wrapper" class="fixed top-1/2 right-0 transform -translate-y-1/2 z-50 flex items-center pr-4">
+        <!-- Toggle (Left side of bar) -->
+        <button onclick="toggleToolbar()" id="toggle-arrow" class="relative z-10 mr-[-1px] w-6 h-12 bg-white/90 border-y border-l border-zinc-200 rounded-l-lg text-zinc-500 hover:text-zinc-800 flex items-center justify-center backdrop-blur-md shadow-sm transition-all">
+            <i class="fas fa-chevron-right text-xs"></i>
+        </button>
+
+        <!-- Content (Vertical) -->
+        <div id="toolbar-content" class="bg-white/90 border border-zinc-200 rounded-2xl shadow-lg py-4 px-2 flex flex-col items-center gap-4 backdrop-blur-md transition-all">
             <!-- Collaboration Button -->
-            <button onclick="handleCollabButton()" id="btn-collab" class="flex items-center px-2 py-1.5 md:px-3 rounded-full bg-zinc-100 hover:bg-zinc-200 text-zinc-700 text-xs font-medium transition-colors border border-transparent">
-                <span id="collab-dot" class="collab-status-dot"></span>
-                <span id="collab-text" class="hidden md:inline">Host</span>
-                <i class="fas fa-wifi md:hidden"></i>
+            <button onclick="handleCollabButton()" id="btn-collab" class="flex flex-col items-center justify-center w-10 h-10 rounded-full bg-zinc-100 hover:bg-zinc-200 text-zinc-700 transition-colors border border-transparent" title="Collaboration">
+                <span id="collab-dot" class="collab-status-dot !mr-0 !mb-1"></span>
+                <i class="fas fa-wifi text-xs"></i>
             </button>
             
-            <!-- Participants Toggle -->
-            <button onclick="toggleParticipants()" id="btn-participants" class="hidden w-8 h-8 rounded-full text-zinc-500 hover:text-zinc-800 hover:bg-zinc-100 flex items-center justify-center transition-colors" title="View Participants">
-                <i class="fas fa-users"></i>
-            </button>
+            <div id="collab-controls-container" class="flex flex-col gap-2 items-center w-full">
+                <!-- Participants Toggle -->
+                <button onclick="toggleParticipants()" id="btn-participants" class="hidden w-8 h-8 rounded-full text-zinc-500 hover:text-zinc-800 hover:bg-zinc-100 flex items-center justify-center transition-colors" title="View Participants">
+                    <i class="fas fa-users"></i>
+                </button>
 
-            <!-- Mic Button (Hidden until connected) -->
-            <button onclick="toggleMic()" id="btn-mic" class="hidden w-8 h-8 rounded-full text-zinc-500 hover:text-zinc-800 hover:bg-zinc-100 flex items-center justify-center transition-colors" title="Toggle Microphone">
-                <i class="fas fa-microphone-slash"></i>
-            </button>
+                <!-- Mic Button -->
+                <button onclick="toggleMic()" id="btn-mic" class="hidden w-8 h-8 rounded-full text-zinc-500 hover:text-zinc-800 hover:bg-zinc-100 flex items-center justify-center transition-colors" title="Toggle Microphone">
+                    <i class="fas fa-microphone-slash"></i>
+                </button>
 
-            <!-- Share Link Button (Hidden by default) -->
-            <button onclick="showShareModal()" id="btn-share-link" class="hidden w-8 h-8 rounded-full text-zinc-500 hover:text-zinc-800 hover:bg-zinc-100 flex items-center justify-center transition-colors" title="Share Session Link">
-                <i class="fas fa-share-alt"></i>
-            </button>
+                <!-- Share Link Button -->
+                <button onclick="showShareModal()" id="btn-share-link" class="hidden w-8 h-8 rounded-full text-zinc-500 hover:text-zinc-800 hover:bg-zinc-100 flex items-center justify-center transition-colors" title="Share Session Link">
+                    <i class="fas fa-share-alt"></i>
+                </button>
+            </div>
 
-            <div class="w-px h-6 bg-zinc-200"></div>
+            <div class="h-px w-6 bg-zinc-200"></div>
 
-            <div class="flex items-center gap-1 md:gap-2 border-r border-zinc-200 pr-2 md:pr-4">
-                <!-- Pan Tool (New for Mobile) -->
+            <div class="flex flex-col items-center gap-2 w-full">
+                <!-- Pan Tool -->
                 <button onclick="setTool('pan')" id="btn-pan" class="tool-btn w-10 h-10 rounded-full bg-zinc-100 text-zinc-500 hover:bg-zinc-200 flex items-center justify-center" title="Pan / Scroll (Space)">
                     <i class="fas fa-hand-paper"></i>
                 </button>
@@ -484,27 +503,25 @@
                 </button>
             </div>
             
-            <div class="flex items-center gap-2 md:gap-3 border-r border-zinc-200 pr-2 md:pr-4">
-                <input type="color" id="colorPicker" value="#000000" title="Color">
-                <div id="size-container" class="flex flex-col w-16 md:w-24">
-                    <div class="flex justify-between text-[10px] text-zinc-500 mb-1">
-                        <span id="size-label-text">Size</span>
-                        <span id="sizeValue">5px</span>
-                    </div>
-                    <input type="range" min="1" max="50" value="5" id="sizeSlider" class="w-full accent-blue-500 h-1 bg-zinc-200 rounded-lg appearance-none cursor-pointer" oninput="updateSize(this.value)">
+            <div class="h-px w-6 bg-zinc-200"></div>
+            
+            <div class="flex flex-col items-center gap-3 w-full">
+                <input type="color" id="colorPicker" value="#000000" title="Color" class="shadow-sm">
+                
+                <div id="size-container" class="flex flex-col items-center gap-1">
+                    <div class="text-[10px] text-zinc-500 font-mono" id="sizeValue">5px</div>
+                    <!-- Vertical Slider using CSS standard property -->
+                    <input type="range" min="1" max="50" value="5" id="sizeSlider" class="accent-blue-500 bg-zinc-200 rounded-lg appearance-none cursor-pointer" oninput="updateSize(this.value)" style="writing-mode: vertical-lr; direction: rtl; width: 6px; height: 80px;">
                 </div>
             </div>
             
-            <div class="flex items-center gap-1 md:gap-2">
+            <div class="h-px w-6 bg-zinc-200"></div>
+
+            <div class="flex flex-col items-center gap-2">
                 <button onclick="undo()" class="undo-redo-btn w-8 h-8 rounded-full text-zinc-500 hover:text-zinc-800 hover:bg-zinc-100 flex items-center justify-center transition-colors" title="Undo (Ctrl+Z)"><i class="fas fa-undo"></i></button>
                 <button onclick="redo()" class="undo-redo-btn w-8 h-8 rounded-full text-zinc-500 hover:text-zinc-800 hover:bg-zinc-100 flex items-center justify-center transition-colors" title="Redo (Ctrl+Y)"><i class="fas fa-redo"></i></button>
             </div>
         </div>
-        
-        <!-- Toggle Button -->
-        <button onclick="toggleToolbar()" id="toggle-arrow" class="absolute -bottom-5 w-10 h-6 bg-white/90 border-b border-r border-l border-zinc-200 rounded-b-lg text-zinc-500 hover:text-zinc-800 flex items-center justify-center backdrop-blur-md shadow-sm transition-all">
-            <i class="fas fa-chevron-up text-xs"></i>
-        </button>
     </div>
 
     <!-- Page Controls (Bottom Left) -->
@@ -524,23 +541,6 @@
         </div>
     </div>
 
-    <!-- Right Actions Toolbar with Toggle -->
-    <div id="right-toolbar-wrapper" class="fixed bottom-6 right-6 z-50">
-        <!-- Toggle Arrow -->
-        <button onclick="toggleRightToolbar()" id="right-toggle-arrow" class="absolute top-1/2 -left-8 transform -translate-y-1/2 w-6 h-10 bg-white/90 border border-zinc-200 rounded-l-lg text-zinc-500 hover:text-zinc-800 flex items-center justify-center backdrop-blur-md shadow-sm transition-all">
-            <i class="fas fa-chevron-right text-xs"></i>
-        </button>
-
-        <!-- Content -->
-        <div id="right-toolbar-content" class="flex flex-col gap-3 transition-opacity duration-200">
-            <button onclick="toggleGrid()" class="w-12 h-12 rounded-full bg-white border border-zinc-200 text-zinc-600 hover:bg-zinc-50 shadow-lg flex items-center justify-center transition-all" title="Toggle Grid"><i class="fas fa-border-all"></i></button>
-            <button onclick="convertInkToText()" class="w-12 h-12 rounded-full bg-emerald-600 text-white hover:bg-emerald-700 shadow-lg flex items-center justify-center transition-all" title="Convert to Text"><i class="fas fa-font"></i></button>
-            <button onclick="clearCanvas()" class="w-12 h-12 rounded-full bg-red-50 border border-red-200 text-red-500 hover:bg-red-100 shadow-lg flex items-center justify-center transition-all" title="Clear Page"><i class="fas fa-trash-alt"></i></button>
-            <button onclick="downloadPDF()" class="w-12 h-12 rounded-full bg-indigo-600 text-white hover:bg-indigo-700 shadow-lg flex items-center justify-center transition-all" title="Download All as PDF"><i class="fas fa-file-pdf"></i></button>
-            <button onclick="downloadCanvas()" class="w-12 h-12 rounded-full bg-blue-600 text-white hover:bg-blue-700 shadow-lg flex items-center justify-center transition-all" title="Download Image"><i class="fas fa-image"></i></button>
-        </div>
-    </div>
-
     <!-- Hidden audio container for remote streams -->
     <div id="remote-audio-container" class="hidden"></div>
 
@@ -555,8 +555,8 @@
         let state = {
             mode: 'IDLE', 
             lastX: 0, lastY: 0,
-            lastPointDrawn: {x: 0, y: 0}, // New: for quadratic bezier
-            lastPressure: 0.5, // New: for smoothing
+            lastPointDrawn: {x: 0, y: 0},
+            lastPressure: 0.5,
             tool: 'pen', color: '#000000', baseSize: 5, pressureEnabled: true,
             isSpaceBarDown: false,
             startScrollTop: 0, startScrollLeft: 0,
@@ -574,8 +574,8 @@
             
             // User Info
             username: "Guest",
-            pendingRoomId: null, // If joining via link
-            participants: [], // List of {id, name}
+            pendingRoomId: null, 
+            participants: [],
 
             // Voice State
             localStream: null,
@@ -592,7 +592,6 @@
         const CANVAS_HEIGHT = 1080;
 
         function init() {
-            // Check for room param
             const urlParams = new URLSearchParams(window.location.search);
             const roomParam = urlParams.get('room');
 
@@ -604,15 +603,29 @@
             }
 
             if (roomParam) {
-                // If room param exists, trigger name modal flow
                 state.pendingRoomId = roomParam;
-                const txt = document.getElementById('collab-text');
-                if(txt) txt.textContent = "Join Session...";
                 showNameModal();
             }
 
             setupObserver();
             setupGlobalEvents();
+        }
+
+        function toggleFocusMode() {
+            document.body.classList.toggle('focus-mode');
+            const btn = document.getElementById('focus-btn');
+            const icon = btn.querySelector('i');
+            if (document.body.classList.contains('focus-mode')) {
+                 icon.classList.remove('fa-expand');
+                 icon.classList.add('fa-compress');
+                 btn.classList.add('bg-blue-600', 'text-white', 'border-blue-600');
+                 btn.classList.remove('bg-white', 'text-zinc-600', 'border-zinc-200');
+            } else {
+                 icon.classList.add('fa-expand');
+                 icon.classList.remove('fa-compress');
+                 btn.classList.remove('bg-blue-600', 'text-white', 'border-blue-600');
+                 btn.classList.add('bg-white', 'text-zinc-600', 'border-zinc-200');
+            }
         }
 
         // --- NAME MODAL LOGIC ---
@@ -629,11 +642,9 @@
                 document.getElementById('name-modal').classList.add('hidden');
                 
                 if (state.pendingRoomId) {
-                    // Completing a join flow
                     joinSession(state.pendingRoomId);
                     state.pendingRoomId = null;
                 } else {
-                    // Completing a host flow
                     startHosting();
                 }
             } else {
@@ -647,22 +658,13 @@
             if (state.peer && !state.peer.destroyed) {
                 showShareModal();
             } else {
-                // Start hosting flow -> ask name first
                 showNameModal();
             }
         }
 
         function startHosting() {
-            const btn = document.getElementById('btn-collab');
-            const dot = document.getElementById('collab-dot');
-            const txt = document.getElementById('collab-text');
-            
-            if(txt) txt.textContent = "Starting...";
-
             state.isHost = true;
             state.roomId = 'wb-' + Math.random().toString(36).substr(2, 9);
-            
-            // Add self to participants list
             updateParticipantsList([{ id: 'host', name: state.username + " (You)", isHost: true }]);
 
             state.peer = new Peer(state.roomId, {
@@ -678,9 +680,8 @@
 
             state.peer.on('open', (id) => {
                 console.log('My peer ID is: ' + id);
-                if(txt) txt.textContent = "Hosting";
-                dot.classList.add('online');
-                document.getElementById('toolbar-content').classList.add('collab-active');
+                document.querySelectorAll('.collab-status-dot').forEach(el => el.classList.add('online'));
+                
                 document.getElementById('btn-share-link').classList.remove('hidden');
                 document.getElementById('btn-mic').classList.remove('hidden');
                 document.getElementById('btn-participants').classList.remove('hidden');
@@ -703,16 +704,10 @@
             state.peer.on('error', (err) => {
                 console.error(err);
                 alert("P2P Error: " + err.type);
-                if(txt) txt.textContent = "Host";
             });
         }
 
         function joinSession(roomId) {
-            const btn = document.getElementById('btn-collab');
-            const dot = document.getElementById('collab-dot');
-            const txt = document.getElementById('collab-text');
-            
-            if(txt) txt.textContent = "Joining...";
             state.roomId = roomId;
             state.isHost = false;
 
@@ -736,36 +731,28 @@
 
             state.peer.on('error', (err) => {
                 console.error(err);
-                if(txt) txt.textContent = "Error";
                 alert("Could not join session. Host might be offline.");
             });
         }
 
         function setupConnection(conn) {
-            const dot = document.getElementById('collab-dot');
-            const txt = document.getElementById('collab-text');
-
             conn.on('open', () => {
                 console.log("Connection established");
                 state.connections.push(conn);
-                if(txt) txt.textContent = state.isHost ? "Hosting" : "Joined";
-                dot.classList.add('online');
-                document.getElementById('toolbar-content').classList.add('collab-active');
+                document.querySelectorAll('.collab-status-dot').forEach(el => el.classList.add('online'));
+                
                 if(state.isHost) document.getElementById('btn-share-link').classList.remove('hidden');
                 document.getElementById('btn-mic').classList.remove('hidden');
                 document.getElementById('btn-participants').classList.remove('hidden');
                 
                 // === HANDSHAKE LOGIC ===
                 if (state.isHost) {
-                    // Host waits for guest name
-                    // Host calls if mic is already on
                     if (state.localStream && state.isMicOn) {
                         const call = state.peer.call(conn.peer, state.localStream);
                         handleOutgoingCall(call);
                     }
                     setTimeout(() => sendInitialState(conn), 500);
                 } else {
-                    // Guest sends name immediately
                     conn.send({ type: 'join', name: state.username });
                 }
             });
@@ -777,10 +764,8 @@
             conn.on('close', () => {
                 state.connections = state.connections.filter(c => c !== conn);
                 if (state.connections.length === 0 && !state.isHost) {
-                    if(txt) txt.textContent = "Disconnected";
-                    dot.classList.remove('online');
+                    document.querySelectorAll('.collab-status-dot').forEach(el => el.classList.remove('online'));
                 } else if (state.isHost) {
-                    // Remove participant
                     state.participants = state.participants.filter(p => p.id !== conn.peer);
                     updateParticipantsList(state.participants);
                     broadcast({ type: 'update_participants', list: state.participants });
@@ -822,7 +807,6 @@
             const icon = btn.querySelector('i');
 
             if (!state.localStream) {
-                // First click: Request Permission
                 try {
                     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
                     state.localStream = stream;
@@ -912,9 +896,7 @@
 
         function handlePeerData(data, conn) {
             if (data.type === 'join') {
-                // Host received join request
                 const newPeer = { id: conn.peer, name: data.name, isHost: false };
-                // Add to list if not exists
                 if (!state.participants.find(p => p.id === newPeer.id)) {
                     state.participants.push(newPeer);
                     updateParticipantsList(state.participants);
@@ -922,7 +904,6 @@
                 }
 
             } else if (data.type === 'update_participants') {
-                // Guest received updated list
                 updateParticipantsList(data.list);
 
             } else if (data.type === 'init') {
@@ -940,8 +921,6 @@
                 state.activePageIndex = data.activeIndex || 0;
                 updatePageIndicator();
                 setTimeout(() => state.pages[state.activePageIndex]?.canvas.scrollIntoView(), 100);
-                
-                // Handle initial participant list sync
                 if (data.participants) updateParticipantsList(data.participants);
 
             } else if (data.type === 'stroke') {
@@ -956,7 +935,6 @@
         }
 
         function drawRemoteStroke(strokeData) {
-            // Updated to use Quadratic Curves for smoother remote viewing
             while (state.pages.length <= strokeData.pageIndex) addPage(false);
             const page = state.pages[strokeData.pageIndex];
             const ctx = page.ctx;
@@ -975,47 +953,34 @@
                 ctx.strokeStyle = strokeData.color;
             }
 
-            // Begin path and move to first point
             ctx.beginPath();
             ctx.moveTo(points[0].x, points[0].y);
 
             if (strokeData.tool === 'eraser') {
-                // Eraser can use simple lines efficiently
                 for (let i = 1; i < points.length; i++) {
                     ctx.lineTo(points[i].x, points[i].y);
                 }
                 ctx.stroke();
             } else {
-                // For pen, we use quadratic curves and variable width emulation
-                // We have to stroke segment by segment for variable width
                 let lastDrawn = points[0];
-                
                 for (let i = 1; i < points.length; i++) {
                     const p1 = points[i];
-                    // Calculate midpoint
                     const midX = (points[i-1].x + p1.x) / 2;
                     const midY = (points[i-1].y + p1.y) / 2;
-                    
                     ctx.beginPath();
                     ctx.moveTo(lastDrawn.x, lastDrawn.y);
                     ctx.quadraticCurveTo(points[i-1].x, points[i-1].y, midX, midY);
-                    
-                    // Simple pressure width
                     const pressure = p1.p || 0.5;
                     ctx.lineWidth = Math.max(0.5, strokeData.baseSize * pressure * 2);
-                    
                     ctx.stroke();
                     lastDrawn = {x: midX, y: midY};
                 }
-                
-                // Draw tail
                 ctx.beginPath();
                 ctx.moveTo(lastDrawn.x, lastDrawn.y);
                 ctx.lineTo(points[points.length-1].x, points[points.length-1].y);
                 ctx.lineWidth = Math.max(0.5, strokeData.baseSize * (points[points.length-1].p || 0.5) * 2);
                 ctx.stroke();
             }
-
             ctx.restore();
         }
 
@@ -1044,23 +1009,14 @@
             const canvas = document.createElement('canvas');
             canvas.className = 'page-canvas';
             canvas.id = `page-${index}`;
-            
-            // Standardize resolution for "PC Screen" experience
             canvas.width = CANVAS_WIDTH;
             canvas.height = CANVAS_HEIGHT;
-            
-            // CSS handles the display size (responsive)
-            // No style.width needed here, handled by CSS class .page-canvas
-            
             const ctx = canvas.getContext('2d'); 
             ctx.lineCap = 'round';
             ctx.lineJoin = 'round';
-            
-            // If Pan mode is currently active, ensure new canvas has pointer-events: none
             if (state.tool === 'pan') {
                 pagesStack.classList.add('pan-active');
             }
-            
             return { canvas, ctx };
         }
 
@@ -1133,9 +1089,6 @@
         }
 
         function resize() {
-            // Since we use CSS scaling for a fixed resolution canvas, 
-            // we don't need to rebuild the canvas on resize anymore.
-            // This prevents data loss on rotation.
             if(state.selection.active) stampSelection();
             baseCanvas.width = CANVAS_WIDTH;
             baseCanvas.height = CANVAS_HEIGHT;
@@ -1146,7 +1099,6 @@
             const observer = new IntersectionObserver((entries) => {
                 entries.forEach(entry => { if (entry.isIntersecting) { const idx = state.pages.findIndex(p => p.canvas === entry.target); if (idx !== -1) { state.activePageIndex = idx; updatePageIndicator(); } } });
             }, { threshold: 0.5 });
-            const originalAddPage = addPage;
             state.pages.forEach(p => observer.observe(p.canvas));
             const existingAddPage = addPage;
             addPage = function(shouldBroadcast=true) {
@@ -1163,7 +1115,6 @@
 
         function setupGlobalEvents() {
             scrollView.addEventListener('contextmenu', e => e.preventDefault());
-            // We attach pointer events to the wrapper to delegate, but individual canvases capture pointers too
             scrollView.addEventListener('pointerdown', handlePointerDown);
             window.addEventListener('pointermove', handlePointerMove);
             window.addEventListener('pointerup', handlePointerUp);
@@ -1176,11 +1127,8 @@
             if (!targetCanvas || targetCanvas.tagName !== 'CANVAS') return null;
             const pageIndex = state.pages.findIndex(p => p.canvas === targetCanvas); if (pageIndex === -1) return null;
             const rect = targetCanvas.getBoundingClientRect();
-            
-            // Map screen coordinates (rect) to internal canvas coordinates (1920x1080)
             const scaleX = targetCanvas.width / rect.width;
             const scaleY = targetCanvas.height / rect.height;
-            
             return { 
                 pageIndex, 
                 x: (e.clientX - rect.left) * scaleX, 
@@ -1191,14 +1139,9 @@
         }
 
         function handlePointerDown(e) {
-            // Pan Tool or Spacebar Logic
-            if (state.isSpaceBarDown || state.tool === 'pan') { 
-                return; 
-            }
-            
+            if (state.isSpaceBarDown || state.tool === 'pan') { return; }
             const info = getEventInfo(e);
             
-            // Right click/Long press logic
             if (e.button === 2 || e.button === 5) { 
                 state.activePageIndex = info ? info.pageIndex : state.activePageIndex; 
                 state.mode = 'LASSO_WAIT'; 
@@ -1213,13 +1156,10 @@
                 hideQuickWheel(); 
                 return; 
             }
-            
             if (!info) return;
-            
             state.activePageIndex = info.pageIndex; 
             updatePageIndicator();
             
-            // Selection Logic
             if (state.selection.active && state.selection.pageIndex === info.pageIndex) { 
                 const s = state.selection; 
                 if (info.x >= s.x && info.x <= s.x + s.w && info.y >= s.y && info.y <= s.y + s.h) { 
@@ -1233,24 +1173,16 @@
                 } else stampSelection(); 
             } else if (state.selection.active) stampSelection();
 
-            // Drawing Logic
             if (e.buttons === 1) { 
                 state.mode = 'DRAWING'; 
-                
-                // Initialize Smooth Drawing State
-                // Removed Math.round for sub-pixel precision
                 state.lastX = info.x; 
                 state.lastY = info.y;
-                state.lastPointDrawn = { x: info.x, y: info.y }; // Start of stroke
-                state.lastPressure = info.pressure > 0 ? info.pressure : 0.5; // Init smoothing
-                
+                state.lastPointDrawn = { x: info.x, y: info.y }; 
+                state.lastPressure = info.pressure > 0 ? info.pressure : 0.5; 
                 state.strokeStartX = e.clientX; 
                 state.strokeStartY = e.clientY; 
                 state.strokeStartTime = Date.now(); 
                 state.currentStrokePoints = [{ x: info.x, y: info.y, p: parseFloat(state.lastPressure.toFixed(2)) }]; 
-                
-                // Note: We do NOT draw here. We wait for movement to draw curves.
-                // If it's a tap, PointerUp will handle the dot.
             } else if (e.button === 1) { 
                 e.preventDefault(); toggleEraser(); 
             }
@@ -1275,11 +1207,8 @@
             else if (state.mode === 'DRAWING') { 
                 state.mode = 'IDLE'; 
                 const page = state.pages[state.activePageIndex]; 
-                
                 if (page) { 
-                    // Finish the stroke
                     if (state.currentStrokePoints.length < 2) {
-                        // It was just a tap (Dot)
                         page.ctx.beginPath();
                         page.ctx.arc(state.lastX, state.lastY, state.baseSize * (state.lastPressure || 0.5), 0, Math.PI * 2);
                         page.ctx.fillStyle = state.tool === 'eraser' ? '#ffffff' : state.color;
@@ -1291,11 +1220,9 @@
                              page.ctx.fill();
                         }
                     } else {
-                        // Draw the final tail from last midpoint to the pen tip
                         page.ctx.beginPath();
                         page.ctx.moveTo(state.lastPointDrawn.x, state.lastPointDrawn.y);
                         page.ctx.lineTo(state.lastX, state.lastY);
-                        
                         if (state.tool === 'eraser') {
                             page.ctx.globalCompositeOperation = 'destination-out';
                             page.ctx.lineWidth = state.baseSize * 3;
@@ -1306,9 +1233,7 @@
                         }
                         page.ctx.stroke();
                     }
-
                     saveStateToPage(state.activePageIndex); 
-                    
                     if (state.roomId && state.currentStrokePoints.length > 0) { 
                         broadcast({ type: 'stroke', points: state.currentStrokePoints, color: state.color, baseSize: state.baseSize, tool: state.tool, pageIndex: state.activePageIndex }); 
                     } else { 
@@ -1322,9 +1247,7 @@
         function draw(e, pageIndex) {
             const page = state.pages[pageIndex]; if (!page) return;
             const rect = page.canvas.getBoundingClientRect();
-            // Use Coalesced events for higher precision if available
             const events = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
-            
             const scaleX = page.canvas.width / rect.width;
             const scaleY = page.canvas.height / rect.height;
 
@@ -1332,22 +1255,12 @@
                 const x = (event.clientX - rect.left) * scaleX; 
                 const y = (event.clientY - rect.top) * scaleY;
                 const pressure = (event.pointerType === 'pen' && state.pressureEnabled) ? event.pressure : 0.5;
-                
-                // --- NOISE FILTER (New) ---
-                // Ignore points too close to the last captured point to prevent jitter/stair-stepping
-                // 3px threshold for 1920x1080 canvas
                 const dist = Math.hypot(x - state.lastX, y - state.lastY);
                 if (dist < 3) return; 
 
-                // P2P data collection
                 if (state.mode === 'DRAWING') { 
-                    // No rounding
                     state.currentStrokePoints.push({ x: x, y: y, p: parseFloat(pressure.toFixed(2)) }); 
                 }
-
-                // --- SMOOTHING ALGORITHM (Quadratic Bezier) ---
-                // We draw from the previous Midpoint to the new Midpoint, 
-                // using the captured Point as the control point.
                 
                 const midX = (state.lastX + x) / 2;
                 const midY = (state.lastY + y) / 2;
@@ -1356,9 +1269,7 @@
                 page.ctx.moveTo(state.lastPointDrawn.x, state.lastPointDrawn.y);
                 page.ctx.quadraticCurveTo(state.lastX, state.lastY, midX, midY);
 
-                // --- PRESSURE SMOOTHING ---
-                // Weighted average to prevent blobby lines
-                const alpha = 0.5; // Smoother transition
+                const alpha = 0.5; 
                 const smoothedPressure = state.lastPressure * alpha + pressure * (1 - alpha);
                 state.lastPressure = smoothedPressure;
 
@@ -1368,14 +1279,12 @@
                 } else {
                     page.ctx.globalCompositeOperation = 'source-over';
                     page.ctx.strokeStyle = state.color;
-                    // Scale width by pressure
                     const width = Math.max(0.5, event.pointerType === 'pen' ? (state.baseSize * smoothedPressure * 2) : state.baseSize);
                     page.ctx.lineWidth = width;
                 }
                 
                 page.ctx.stroke();
                 
-                // Update State
                 state.lastPointDrawn = { x: midX, y: midY };
                 state.lastX = x;
                 state.lastY = y;
@@ -1387,7 +1296,7 @@
             page.ctx.save(); page.ctx.globalCompositeOperation = 'source-over'; page.ctx.strokeStyle = '#3b82f6'; page.ctx.lineWidth = 1; page.ctx.setLineDash([5, 5]); page.ctx.beginPath(); state.lassoPath.forEach((p, i) => { i===0 ? page.ctx.moveTo(p.x, p.y) : page.ctx.lineTo(p.x, p.y); }); page.ctx.stroke(); page.ctx.restore();
         }
 
-        function finishLassoSelection() { /* ... unchanged ... */
+        function finishLassoSelection() { 
             const page = state.pages[state.activePageIndex];
             if (state.lassoSnapshot && page) { page.ctx.putImageData(state.lassoSnapshot, 0, 0); state.lassoSnapshot = null; }
             if (state.lassoPath.length < 3) return;
@@ -1400,11 +1309,10 @@
             updateSelectionVisuals();
         }
 
-        function liftSelection() { /* ... unchanged ... */
+        function liftSelection() { 
             if (state.selection.image) return;
             const page = state.pages[state.selection.pageIndex];
             const s = state.selection;
-            // No dpr scaling needed with fixed logical resolution
             let minX=Infinity, minY=Infinity, maxX=-Infinity, maxY=-Infinity;
             state.lassoPath.forEach(p => { const px = p.x, py = p.y; if (px < minX) minX = px; if (px > maxX) maxX = px; if (py < minY) minY = py; if (py > maxY) maxY = py; });
             const pad = 5; minX = Math.floor(minX - pad); minY = Math.floor(minY - pad); maxX = Math.ceil(maxX + pad); maxY = Math.ceil(maxY + pad);
@@ -1423,7 +1331,7 @@
             baseCanvas.width = page.canvas.width; baseCanvas.height = page.canvas.height; baseCtx.clearRect(0,0, baseCanvas.width, baseCanvas.height); baseCtx.drawImage(page.canvas, 0, 0);
         }
 
-        async function downloadPDF() { /* ... unchanged ... */
+        async function downloadPDF() { 
             if(state.selection.active) stampSelection();
             const { jsPDF } = window.jspdf;
             const width = CANVAS_WIDTH; const height = CANVAS_HEIGHT; const orientation = 'l';
@@ -1432,7 +1340,7 @@
             pdf.save('whiteboard-export.pdf');
         }
 
-        async function convertInkToText() { /* ... unchanged ... */
+        async function convertInkToText() { 
             if(state.selection.active) stampSelection();
             const page = state.pages[state.activePageIndex];
             if(!page) return;
@@ -1459,8 +1367,6 @@
             state.tool = t; 
             document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active')); 
             document.getElementById(`btn-${t}`).classList.add('active'); 
-            
-            // Handle Pan Tool CSS
             if (t === 'pan') {
                 pagesStack.classList.add('pan-active');
             } else {
@@ -1495,11 +1401,9 @@
             const s = state.selection; 
             const page = state.pages[s.pageIndex]; 
             if (s.active && page) { 
-                // We need to map internal coordinates back to visual CSS coordinates
                 const rect = page.canvas.getBoundingClientRect();
                 const scaleX = rect.width / page.canvas.width;
                 const scaleY = rect.height / page.canvas.height;
-                
                 ui.style.left = `${page.canvas.offsetLeft + (s.x * scaleX)}px`; 
                 ui.style.top = `${page.canvas.offsetTop + (s.y * scaleY)}px`; 
                 ui.style.width = `${s.w * scaleX}px`; 
