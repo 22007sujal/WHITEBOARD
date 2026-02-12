@@ -9,19 +9,9 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <!-- Tesseract.js for OCR -->
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+    <!-- PeerJS for P2P Collaboration -->
+    <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
     
-    <!-- Firebase SDKs -->
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-        
-        window.firebaseModules = { initializeApp, getAuth, signInAnonymously, signInWithCustomToken, getFirestore, collection, addDoc, onSnapshot, query, orderBy, serverTimestamp };
-        
-        // Dispatch event to signal firebase is ready
-        window.dispatchEvent(new Event('firebase-ready'));
-    </script>
-
     <style>
         body {
             margin: 0;
@@ -214,7 +204,7 @@
             pointer-events: none;
         }
 
-        /* Loading indicator for storage restore */
+        /* Loading indicator */
         #loading-overlay {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: #18181b; z-index: 100;
@@ -231,14 +221,14 @@
 
         /* Collaboration Indicator */
         .collab-active {
-            box-shadow: 0 0 15px rgba(16, 185, 129, 0.5);
-            border-color: #10b981 !important;
+            box-shadow: 0 0 15px rgba(59, 130, 246, 0.5);
+            border-color: #3b82f6 !important;
         }
         .collab-status-dot {
             width: 8px; height: 8px; border-radius: 50%; background: #ef4444;
             display: inline-block; margin-right: 6px;
         }
-        .collab-status-dot.online { background: #10b981; box-shadow: 0 0 8px #10b981; }
+        .collab-status-dot.online { background: #3b82f6; box-shadow: 0 0 8px #3b82f6; }
     </style>
 </head>
 <body id="body-bg">
@@ -263,21 +253,22 @@
     <div id="share-modal" class="hidden fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm">
         <div class="bg-zinc-900 border border-zinc-700 rounded-xl p-6 w-full max-w-md shadow-2xl transform scale-100 transition-all">
             <div class="flex justify-between items-center mb-4">
-                <h3 class="text-lg font-bold text-white"><i class="fas fa-broadcast-tower text-green-500 mr-2"></i>Session Live</h3>
+                <h3 class="text-lg font-bold text-white"><i class="fas fa-broadcast-tower text-blue-500 mr-2"></i>Hosting Session</h3>
                 <button onclick="closeShareModal()" class="text-zinc-400 hover:text-white"><i class="fas fa-times"></i></button>
             </div>
-            <p class="text-zinc-400 text-sm mb-4">Share this link to invite others to your whiteboard.</p>
+            <p class="text-zinc-400 text-sm mb-4">Share this link to invite others. Your PC acts as the server.</p>
             <div class="flex items-center gap-2 bg-zinc-800 p-2 rounded-lg border border-zinc-700 mb-4">
                 <input type="text" id="share-link-input" readonly class="bg-transparent text-zinc-200 text-sm w-full outline-none px-2 font-mono">
                 <button onclick="copyShareLink()" class="p-2 bg-zinc-700 hover:bg-zinc-600 rounded text-white transition-colors" title="Copy Link"><i class="fas fa-copy"></i></button>
             </div>
-            <div class="flex justify-end">
+            <div class="flex justify-between items-center mt-4">
+                <div class="text-xs text-zinc-500" id="peer-status-msg">Waiting for connections...</div>
                 <button onclick="closeShareModal()" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-medium">Done</button>
             </div>
         </div>
     </div>
 
-    <!-- Dedicated Gesture Zone for Page Navigation (LEFT SIDE) - Widened to w-16 -->
+    <!-- Dedicated Gesture Zone for Page Navigation (LEFT SIDE) -->
     <div id="gesture-zone" class="fixed top-0 left-0 w-16 h-full z-40 flex flex-col justify-center items-center group hover:bg-white/5 transition-colors cursor-pointer" title="Swipe vertically here to change/add pages">
         <div class="h-16 w-1 rounded-full bg-zinc-700/50 group-hover:bg-zinc-500/80 transition-colors mb-2"></div>
         <div class="h-16 w-1 rounded-full bg-zinc-700/50 group-hover:bg-zinc-500/80 transition-colors"></div>
@@ -390,14 +381,6 @@
         const selectionUi = document.getElementById('selection-ui');
         const gestureZone = document.getElementById('gesture-zone');
         
-        // Collaboration Globals
-        let db = null;
-        let auth = null;
-        let userId = null;
-        let unsubscribeStrokes = null;
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-wb';
-        let currentSessionId = null;
-
         let state = {
             mode: 'IDLE', 
             lastX: 0, lastY: 0,
@@ -409,9 +392,12 @@
             selection: { active: false, pageIndex: -1, x: 0, y: 0, w: 0, h: 0, image: null },
             strokeStartX: 0, strokeStartY: 0, strokeStartTime: 0, // Track stroke gesture
             
-            // Collab State
-            isCollaborating: false,
-            currentStrokePoints: [] 
+            // P2P State
+            isHost: false,
+            peer: null,
+            connections: [],
+            roomId: null,
+            currentStrokePoints: []
         };
 
         const MAX_HISTORY = 30;
@@ -420,33 +406,269 @@
         let saveTimeout = null;
 
         function init() {
-            // Check for Session Param in URL
+            // Check for room param
             const urlParams = new URLSearchParams(window.location.search);
-            const sessionParam = urlParams.get('session');
-            
-            // Check for saved data only if not joining a session
-            if (!sessionParam && localStorage.getItem('wb_data')) {
+            const roomParam = urlParams.get('room');
+
+            if (!roomParam && localStorage.getItem('wb_data')) {
                 loadFromStorage();
             } else {
                 addPage();
                 document.getElementById('loading-overlay').classList.add('fade-out');
             }
 
-            if (sessionParam) {
-                // Auto-join if session present
-                currentSessionId = sessionParam;
-                document.getElementById('collab-text').textContent = "Join Session...";
-                // Wait slightly for Firebase modules to load
-                window.addEventListener('firebase-ready', () => {
-                    initCollaboration(currentSessionId); 
-                });
-                // Fallback in case event fired before listener
-                if(window.firebaseModules) initCollaboration(currentSessionId);
+            if (roomParam) {
+                // We are a guest trying to join
+                joinSession(roomParam);
             }
 
             setupObserver();
             setupGlobalEvents();
         }
+
+        // --- P2P LOGIC START ---
+
+        function handleCollabButton() {
+            if (state.peer && !state.peer.destroyed) {
+                // Already connected/hosting, show share modal
+                showShareModal();
+            } else {
+                // Not connected, start hosting
+                startHosting();
+            }
+        }
+
+        function startHosting() {
+            const btn = document.getElementById('btn-collab');
+            const dot = document.getElementById('collab-dot');
+            const txt = document.getElementById('collab-text');
+            
+            txt.textContent = "Starting...";
+
+            state.isHost = true;
+            // Generate a random ID for the room
+            state.roomId = 'wb-' + Math.random().toString(36).substr(2, 9);
+            
+            state.peer = new Peer(state.roomId, {
+                debug: 2,
+                config: {
+                    iceServers: [
+                        { urls: 'stun:stun.l.google.com:19302' },
+                        { urls: 'stun:stun1.l.google.com:19302' }
+                    ]
+                }
+            });
+
+            state.peer.on('open', (id) => {
+                console.log('My peer ID is: ' + id);
+                txt.textContent = "Hosting";
+                dot.classList.add('online');
+                document.getElementById('toolbar-content').classList.add('collab-active');
+                document.getElementById('btn-share-link').classList.remove('hidden');
+                
+                // Update URL without reload if possible
+                try {
+                    const newUrl = window.location.pathname + '?room=' + id;
+                    window.history.pushState({ path: newUrl }, '', newUrl);
+                } catch(e) { console.log("Sandbox mode: URL update blocked"); }
+                
+                showShareModal();
+            });
+
+            state.peer.on('connection', (conn) => {
+                console.log('Peer connected:', conn.peer);
+                setupConnection(conn);
+                // Host sends initial state to new peer
+                setTimeout(() => sendInitialState(conn), 500);
+            });
+
+            state.peer.on('error', (err) => {
+                console.error(err);
+                alert("P2P Error: " + err.type);
+                txt.textContent = "Host";
+            });
+        }
+
+        function joinSession(roomId) {
+            const btn = document.getElementById('btn-collab');
+            const dot = document.getElementById('collab-dot');
+            const txt = document.getElementById('collab-text');
+            
+            txt.textContent = "Joining...";
+            state.roomId = roomId;
+            state.isHost = false;
+
+            // Create peer with random ID
+            state.peer = new Peer(null, {
+                debug: 2,
+                config: {
+                    iceServers: [
+                        { urls: 'stun:stun.l.google.com:19302' },
+                        { urls: 'stun:stun1.l.google.com:19302' }
+                    ]
+                }
+            });
+
+            state.peer.on('open', (id) => {
+                console.log('Joined as peer: ' + id);
+                const conn = state.peer.connect(roomId, { reliable: true });
+                setupConnection(conn);
+            });
+
+            state.peer.on('error', (err) => {
+                console.error(err);
+                txt.textContent = "Error";
+                alert("Could not join session. Host might be offline.");
+            });
+        }
+
+        function setupConnection(conn) {
+            const dot = document.getElementById('collab-dot');
+            const txt = document.getElementById('collab-text');
+
+            conn.on('open', () => {
+                console.log("Connection established");
+                state.connections.push(conn);
+                txt.textContent = state.isHost ? "Hosting" : "Joined";
+                dot.classList.add('online');
+                document.getElementById('toolbar-content').classList.add('collab-active');
+                if(state.isHost) document.getElementById('btn-share-link').classList.remove('hidden');
+                
+                // If not host, request sync? Host sends it automatically on connect.
+            });
+
+            conn.on('data', (data) => {
+                handlePeerData(data);
+            });
+
+            conn.on('close', () => {
+                state.connections = state.connections.filter(c => c !== conn);
+                if (state.connections.length === 0 && !state.isHost) {
+                    txt.textContent = "Disconnected";
+                    dot.classList.remove('online');
+                }
+            });
+        }
+
+        function sendInitialState(conn) {
+            // Send all page snapshots
+            const pagesData = state.pages.map(p => p.canvas.toDataURL());
+            conn.send({
+                type: 'init',
+                pages: pagesData,
+                activeIndex: state.activePageIndex
+            });
+        }
+
+        function broadcast(data) {
+            state.connections.forEach(conn => {
+                if (conn.open) {
+                    conn.send(data);
+                }
+            });
+        }
+
+        function handlePeerData(data) {
+            if (data.type === 'init') {
+                // Rebuild pages from snapshot
+                // Clear existing
+                while(state.pages.length > 0) {
+                    const p = state.pages.pop();
+                    p.canvas.remove();
+                }
+                pagesStack.innerHTML = '';
+                state.activePageIndex = 0;
+
+                data.pages.forEach((imgData, idx) => {
+                    const { canvas, ctx } = createPageCanvas(idx);
+                    pagesStack.appendChild(canvas);
+                    state.pages.push({ id: `page-${idx}`, canvas, ctx, history: [imgData], historyStep: 0 });
+                    
+                    const img = new Image();
+                    img.onload = () => {
+                        ctx.drawImage(img, 0, 0, canvas.width / (window.devicePixelRatio||1), canvas.height / (window.devicePixelRatio||1));
+                    };
+                    img.src = imgData;
+                });
+                state.activePageIndex = data.activeIndex || 0;
+                updatePageIndicator();
+                setTimeout(() => state.pages[state.activePageIndex]?.canvas.scrollIntoView(), 100);
+
+            } else if (data.type === 'stroke') {
+                drawRemoteStroke(data);
+            } else if (data.type === 'add_page') {
+                addPage(false); // Don't trigger save/broadcast loop
+            } else if (data.type === 'page_change') {
+                state.activePageIndex = data.index;
+                updatePageIndicator();
+                state.pages[data.index]?.canvas.scrollIntoView({ behavior: 'smooth' });
+            }
+        }
+
+        function drawRemoteStroke(strokeData) {
+            // Ensure page exists
+            while (state.pages.length <= strokeData.pageIndex) {
+                addPage(false);
+            }
+            
+            const page = state.pages[strokeData.pageIndex];
+            const ctx = page.ctx;
+            const points = strokeData.points;
+            if (!points || points.length < 2) return;
+
+            ctx.save();
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            
+            if (strokeData.tool === 'eraser') {
+                ctx.globalCompositeOperation = 'destination-out';
+                ctx.lineWidth = strokeData.baseSize * 3;
+            } else {
+                ctx.globalCompositeOperation = 'source-over';
+                ctx.strokeStyle = strokeData.color;
+            }
+
+            for (let i = 1; i < points.length; i++) {
+                const p1 = points[i-1];
+                const p2 = points[i];
+                const pressure = p2.p || 0.5;
+                
+                ctx.beginPath();
+                ctx.moveTo(p1.x, p1.y);
+                ctx.lineTo(p2.x, p2.y);
+                
+                if (strokeData.tool !== 'eraser') {
+                    ctx.lineWidth = Math.max(0.5, strokeData.baseSize * pressure * 2);
+                }
+                ctx.stroke();
+            }
+            ctx.restore();
+        }
+
+        // --- UI Logic for Share Modal ---
+        function showShareModal() {
+            const input = document.getElementById('share-link-input');
+            let url = window.location.href;
+            if (state.roomId && !url.includes(state.roomId)) {
+                // If URL pushState failed, construct it manually for the user to see
+                const separator = url.includes('?') ? '&' : '?';
+                url = url.split('?')[0] + separator + 'room=' + state.roomId;
+            }
+            input.value = url;
+            document.getElementById('share-modal').classList.remove('hidden');
+        }
+
+        function closeShareModal() {
+            document.getElementById('share-modal').classList.add('hidden');
+        }
+
+        function copyShareLink() {
+            const input = document.getElementById('share-link-input');
+            input.select();
+            document.execCommand('copy');
+        }
+
+        // --- Core App Logic (Updated for P2P) ---
 
         function createPageCanvas(index) {
             const canvas = document.createElement('canvas');
@@ -485,22 +707,21 @@
 
         function triggerSave() {
             clearTimeout(saveTimeout);
-            saveTimeout = setTimeout(saveToStorage, 1000); // Debounce save 1s
+            saveTimeout = setTimeout(saveToStorage, 1000); 
         }
 
         function saveToStorage() {
-            // Don't overwrite local storage if we are a guest in a session
-            if (state.isCollaborating && currentSessionId) return;
+            // Disable local storage if in a room to avoid conflicts/overwrites
+            if (state.roomId) return;
 
             try {
-                // Save current canvas state as DataURL for each page
                 const data = {
                     activePageIndex: state.activePageIndex,
                     pages: state.pages.map(p => p.canvas.toDataURL())
                 };
                 localStorage.setItem('wb_data', JSON.stringify(data));
             } catch (e) {
-                console.warn('Local Storage quota exceeded. Could not save.', e);
+                console.warn('Storage quota', e);
             }
         }
 
@@ -512,49 +733,30 @@
                     document.getElementById('loading-overlay').classList.add('fade-out');
                     return;
                 }
-
-                // Restore pages
                 let loadedCount = 0;
                 data.pages.forEach((dataURL, index) => {
                     const { canvas, ctx } = createPageCanvas(index);
                     pagesStack.appendChild(canvas);
-                    
-                    const pageObj = { 
-                        id: `page-${index}`, 
-                        canvas: canvas, 
-                        ctx: ctx, 
-                        history: [dataURL], // Initial history state
-                        historyStep: 0 
-                    };
+                    const pageObj = { id: `page-${index}`, canvas, ctx, history: [dataURL], historyStep: 0 };
                     state.pages.push(pageObj);
-
                     const img = new Image();
                     img.onload = () => {
-                        ctx.drawImage(img, 0, 0, canvas.width / (window.devicePixelRatio || 1), canvas.height / (window.devicePixelRatio || 1));
+                        ctx.drawImage(img, 0, 0, canvas.width / (window.devicePixelRatio||1), canvas.height / (window.devicePixelRatio||1));
                         loadedCount++;
-                        if (loadedCount === data.pages.length) {
-                             document.getElementById('loading-overlay').classList.add('fade-out');
-                        }
+                        if (loadedCount === data.pages.length) document.getElementById('loading-overlay').classList.add('fade-out');
                     };
                     img.src = dataURL;
                 });
-
                 state.activePageIndex = Math.min(data.activePageIndex, state.pages.length - 1);
                 updatePageIndicator();
-                setTimeout(() => {
-                     const p = state.pages[state.activePageIndex];
-                     if(p) p.canvas.scrollIntoView();
-                }, 100);
-
+                setTimeout(() => state.pages[state.activePageIndex]?.canvas.scrollIntoView(), 100);
             } catch (e) {
-                console.error('Error loading from storage', e);
-                localStorage.removeItem('wb_data'); // Corrupt data?
                 addPage();
                 document.getElementById('loading-overlay').classList.add('fade-out');
             }
         }
 
-        function addPage(shouldSave = true) {
+        function addPage(shouldBroadcast = true) {
             if(state.selection.active) stampSelection();
             const index = state.pages.length;
             const { canvas, ctx } = createPageCanvas(index);
@@ -562,7 +764,11 @@
             state.pages.push({ id: `page-${index}`, canvas: canvas, ctx: ctx, history: [], historyStep: -1 });
             saveStateToPage(index);
             if (index > 0) setTimeout(() => canvas.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
-            if(shouldSave) triggerSave();
+            if(shouldBroadcast && state.roomId) {
+                broadcast({ type: 'add_page' });
+                broadcast({ type: 'page_change', index: index });
+            }
+            if (!state.roomId) triggerSave();
         }
 
         function deletePage() {
@@ -581,11 +787,17 @@
 
         function scrollToNextPage() {
             const nextIndex = state.activePageIndex + 1;
-            if (nextIndex < state.pages.length) state.pages[nextIndex].canvas.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            if (nextIndex < state.pages.length) {
+                state.pages[nextIndex].canvas.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                if(state.roomId) broadcast({ type: 'page_change', index: nextIndex });
+            }
         }
         function scrollToPrevPage() {
             const prevIndex = state.activePageIndex - 1;
-            if (prevIndex >= 0) state.pages[prevIndex].canvas.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            if (prevIndex >= 0) {
+                state.pages[prevIndex].canvas.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                if(state.roomId) broadcast({ type: 'page_change', index: prevIndex });
+            }
         }
 
         function resize() {
@@ -593,28 +805,22 @@
             const dpr = window.devicePixelRatio || 1;
             const width = Math.max(1, window.innerWidth);
             const height = Math.max(1, window.innerHeight);
-            
             state.pages.forEach(page => {
                 let tempCanvas = null;
-                if (page.canvas.width > 0 && page.canvas.height > 0) {
+                if (page.canvas.width > 0) {
                     tempCanvas = document.createElement('canvas');
                     tempCanvas.width = page.canvas.width;
                     tempCanvas.height = page.canvas.height;
                     tempCanvas.getContext('2d').drawImage(page.canvas, 0, 0);
                 }
-                
                 page.canvas.style.width = `${width}px`;
                 page.canvas.style.height = `${height}px`;
                 page.canvas.width = width * dpr;
                 page.canvas.height = height * dpr;
-                
                 page.ctx.scale(dpr, dpr);
                 page.ctx.lineCap = 'round';
                 page.ctx.lineJoin = 'round';
-                
-                if (tempCanvas) {
-                    page.ctx.drawImage(tempCanvas, 0, 0, width, height);
-                }
+                if (tempCanvas) page.ctx.drawImage(tempCanvas, 0, 0, width, height);
             });
             baseCanvas.width = width * dpr;
             baseCanvas.height = height * dpr;
@@ -629,7 +835,6 @@
                         if (idx !== -1) { 
                             state.activePageIndex = idx; 
                             updatePageIndicator(); 
-                            triggerSave(); // Save valid scroll position occasionally
                         }
                     }
                 });
@@ -637,9 +842,8 @@
             const originalAddPage = addPage;
             state.pages.forEach(p => observer.observe(p.canvas));
             
-            // Hook observer into future added pages
             const existingAddPage = addPage;
-            addPage = function(shouldSave=true) {
+            addPage = function(shouldBroadcast=true) {
                  if(state.selection.active) stampSelection();
                  const index = state.pages.length;
                  const { canvas, ctx } = createPageCanvas(index);
@@ -648,7 +852,11 @@
                  saveStateToPage(index);
                  observer.observe(canvas);
                  if (index > 0) setTimeout(() => canvas.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
-                 if(shouldSave) triggerSave();
+                 if(shouldBroadcast && state.roomId) {
+                     broadcast({ type: 'add_page' });
+                     broadcast({ type: 'page_change', index: index });
+                 }
+                 if(!state.roomId) triggerSave();
             }
         }
         function updatePageIndicator() { document.getElementById('pageIndicator').textContent = `Page ${state.activePageIndex + 1}`; }
@@ -656,15 +864,12 @@
         function setupGlobalEvents() {
             scrollView.addEventListener('contextmenu', e => e.preventDefault());
             scrollView.addEventListener('pointerdown', handlePointerDown);
-            // Move pointermove/up to window to catch drags that leave elements
             window.addEventListener('pointermove', handlePointerMove);
             window.addEventListener('pointerup', handlePointerUp);
 
-            // Gesture Zone Events
             gestureZone.addEventListener('pointerdown', (e) => {
                 e.preventDefault(); 
-                e.stopPropagation(); // Don't bubble to scrollview
-                // Capture pointer to track it even if it leaves the div
+                e.stopPropagation();
                 gestureZone.setPointerCapture(e.pointerId); 
                 state.mode = 'GESTURE_SWIPE';
                 state.strokeStartY = e.clientY;
@@ -726,15 +931,10 @@
             if (e.buttons === 1) {
                 state.mode = 'DRAWING';
                 state.lastX = info.x; state.lastY = info.y;
-                
-                // Track Gesture Start
                 state.strokeStartX = e.clientX;
                 state.strokeStartY = e.clientY;
                 state.strokeStartTime = Date.now();
-
-                // Initialize Stroke Recording
                 state.currentStrokePoints = [{ x: info.x, y: info.y, p: info.pressure || 0.5 }];
-
                 draw(e, info.pageIndex);
             } else if (e.button === 1) { e.preventDefault(); toggleEraser(); }
         }
@@ -744,7 +944,6 @@
                 scrollView.scrollTop = state.startScrollTop - (e.clientY - state.lastY);
                 return;
             }
-            // For drawing/lasso, we need valid canvas info. If dragging off canvas, info is null.
             const info = getEventInfo(e);
             
             if (state.mode === 'MOVING_SELECTION') {
@@ -776,21 +975,17 @@
             } else if (state.mode === 'MOVING_SELECTION') {
                 state.mode = 'SELECTION_ACTIVE';
             } else if (state.mode === 'GESTURE_SWIPE') {
-                // Handle Gesture Zone Swipe
                 const dy = e.clientY - state.strokeStartY;
                 const duration = Date.now() - state.strokeStartTime;
-                
-                // Forgiving vertical swipe detection
                 if (duration < 800 && Math.abs(dy) > 50) {
-                    if (dy < 0) { // Swipe Up -> Next / Add
+                    if (dy < 0) { 
                          if (state.activePageIndex === state.pages.length - 1) addPage();
                          else scrollToNextPage();
-                    } else { // Swipe Down -> Prev
+                    } else { 
                          scrollToPrevPage();
                     }
                 }
                 state.mode = 'IDLE';
-                // Release capture if it was set on gestureZone
                 if(gestureZone.hasPointerCapture(e.pointerId)) gestureZone.releasePointerCapture(e.pointerId);
 
             } else if (state.mode === 'DRAWING') {
@@ -799,24 +994,21 @@
                 if (page) { 
                     page.ctx.beginPath(); 
                     saveStateToPage(state.activePageIndex); 
-                    triggerSave(); // Save to LocalStorage
-
-                    // --- Collaboration Send ---
-                    if (state.isCollaborating && userId && state.currentStrokePoints.length > 1) {
-                        const { collection, addDoc, serverTimestamp } = window.firebaseModules;
-                        // Use session ID if active, otherwise fallback to 'default' if logic allows (but we gate sending behind isCollaborating)
-                        const session = currentSessionId || 'default';
-                        addDoc(collection(db, 'artifacts', appId, 'sessions', session, 'strokes'), {
-                            userId: userId,
+                    
+                    // Broadcast Stroke
+                    if (state.roomId && state.currentStrokePoints.length > 1) {
+                        broadcast({
+                            type: 'stroke',
                             points: state.currentStrokePoints,
                             color: state.color,
                             baseSize: state.baseSize,
                             tool: state.tool,
-                            pageIndex: state.activePageIndex,
-                            createdAt: serverTimestamp()
-                        }).catch(err => console.error("Send Error", err));
+                            pageIndex: state.activePageIndex
+                        });
+                    } else {
+                        triggerSave();
                     }
-                    state.currentStrokePoints = []; // Reset
+                    state.currentStrokePoints = [];
                 }
             }
         }
@@ -831,7 +1023,6 @@
                 const y = event.clientY - rect.top;
                 const pressure = (event.pointerType === 'pen' && state.pressureEnabled) ? event.pressure : 0.5;
                 
-                // Record Point
                 if (state.mode === 'DRAWING') {
                     state.currentStrokePoints.push({ x: Math.round(x), y: Math.round(y), p: parseFloat(pressure.toFixed(2)) });
                 }
@@ -866,328 +1057,74 @@
             page.ctx.restore();
         }
 
-        function finishLassoSelection() {
+        function finishLassoSelection() { /* ... unchanged ... */
             const page = state.pages[state.activePageIndex];
             if (state.lassoSnapshot && page) { page.ctx.putImageData(state.lassoSnapshot, 0, 0); state.lassoSnapshot = null; }
             if (state.lassoPath.length < 3) return;
-
             let minX=Infinity, minY=Infinity, maxX=-Infinity, maxY=-Infinity;
-            state.lassoPath.forEach(p => {
-                if(p.x < minX) minX=p.x; if(p.x > maxX) maxX=p.x;
-                if(p.y < minY) minY=p.y; if(p.y > maxY) maxY=p.y;
-            });
+            state.lassoPath.forEach(p => { if(p.x < minX) minX=p.x; if(p.x > maxX) maxX=p.x; if(p.y < minY) minY=p.y; if(p.y > maxY) maxY=p.y; });
             const w = maxX - minX, h = maxY - minY;
             if (w <= 0 || h <= 0) return;
-            
             state.selection = { active: true, pageIndex: state.activePageIndex, x: minX, y: minY, w: w, h: h, image: null };
             state.mode = 'SELECTION_ACTIVE';
             updateSelectionVisuals();
         }
 
-        function liftSelection() {
+        function liftSelection() { /* ... unchanged ... */
             if (state.selection.image) return;
             const page = state.pages[state.selection.pageIndex];
             const s = state.selection;
             const dpr = window.devicePixelRatio || 1;
-            
             let minX=Infinity, minY=Infinity, maxX=-Infinity, maxY=-Infinity;
-            state.lassoPath.forEach(p => {
-                const px = p.x * dpr, py = p.y * dpr;
-                if (px < minX) minX = px; if (px > maxX) maxX = px;
-                if (py < minY) minY = py; if (py > maxY) maxY = py;
-            });
-            const pad = 5 * dpr;
-            minX = Math.floor(minX - pad); minY = Math.floor(minY - pad);
-            maxX = Math.ceil(maxX + pad); maxY = Math.ceil(maxY + pad);
+            state.lassoPath.forEach(p => { const px = p.x * dpr, py = p.y * dpr; if (px < minX) minX = px; if (px > maxX) maxX = px; if (py < minY) minY = py; if (py > maxY) maxY = py; });
+            const pad = 5 * dpr; minX = Math.floor(minX - pad); minY = Math.floor(minY - pad); maxX = Math.ceil(maxX + pad); maxY = Math.ceil(maxY + pad);
             const w = maxX - minX, h = maxY - minY;
             if (w <= 0 || h <= 0) return;
-
             s.x = minX / dpr; s.y = minY / dpr; s.w = w / dpr; s.h = h / dpr;
-            
-            const selCanvas = document.createElement('canvas');
-            selCanvas.width = w; selCanvas.height = h;
-            const selCtx = selCanvas.getContext('2d');
-            
+            const selCanvas = document.createElement('canvas'); selCanvas.width = w; selCanvas.height = h; const selCtx = selCanvas.getContext('2d');
             selCtx.drawImage(page.canvas, -minX, -minY);
-            selCtx.globalCompositeOperation = 'destination-in';
-            selCtx.beginPath();
-            state.lassoPath.forEach((p, i) => {
-                const tx = (p.x * dpr) - minX, ty = (p.y * dpr) - minY;
-                i===0 ? selCtx.moveTo(tx, ty) : selCtx.lineTo(tx, ty);
-            });
-            selCtx.closePath();
-            selCtx.fillStyle = '#000000';
-            selCtx.fill();
-            
+            selCtx.globalCompositeOperation = 'destination-in'; selCtx.beginPath();
+            state.lassoPath.forEach((p, i) => { const tx = (p.x * dpr) - minX, ty = (p.y * dpr) - minY; i===0 ? selCtx.moveTo(tx, ty) : selCtx.lineTo(tx, ty); });
+            selCtx.closePath(); selCtx.fillStyle = '#000000'; selCtx.fill();
             s.image = selCanvas;
-            
-            page.ctx.save();
-            page.ctx.setTransform(1, 0, 0, 1, 0, 0);
-            page.ctx.globalCompositeOperation = 'destination-out';
-            page.ctx.beginPath();
-            state.lassoPath.forEach((p, i) => {
-                const tx = p.x * dpr, ty = p.y * dpr;
-                i===0 ? page.ctx.moveTo(tx, ty) : page.ctx.lineTo(tx, ty);
-            });
-            page.ctx.fillStyle = '#000000';
-            page.ctx.fill();
-            page.ctx.restore();
-            
-            baseCanvas.width = page.canvas.width;
-            baseCanvas.height = page.canvas.height;
-            baseCtx.clearRect(0,0, baseCanvas.width, baseCanvas.height);
-            baseCtx.drawImage(page.canvas, 0, 0);
+            page.ctx.save(); page.ctx.setTransform(1, 0, 0, 1, 0, 0); page.ctx.globalCompositeOperation = 'destination-out'; page.ctx.beginPath();
+            state.lassoPath.forEach((p, i) => { const tx = p.x * dpr, ty = p.y * dpr; i===0 ? page.ctx.moveTo(tx, ty) : page.ctx.lineTo(tx, ty); });
+            page.ctx.fillStyle = '#000000'; page.ctx.fill(); page.ctx.restore();
+            baseCanvas.width = page.canvas.width; baseCanvas.height = page.canvas.height; baseCtx.clearRect(0,0, baseCanvas.width, baseCanvas.height); baseCtx.drawImage(page.canvas, 0, 0);
         }
 
-        async function downloadPDF() {
+        async function downloadPDF() { /* ... unchanged ... */
             if(state.selection.active) stampSelection();
             const { jsPDF } = window.jspdf;
-            const width = window.innerWidth;
-            const height = window.innerHeight;
-            const orientation = width > height ? 'l' : 'p';
-            
-            const pdf = new jsPDF({
-                orientation: orientation,
-                unit: 'px',
-                format: [width, height]
-            });
-            
-            for (let i = 0; i < state.pages.length; i++) {
-                if (i > 0) pdf.addPage([width, height], orientation);
-                const page = state.pages[i];
-                const composite = getCompositedCanvas(page.canvas);
-                const imgData = composite.toDataURL('image/jpeg', 0.95);
-                pdf.addImage(imgData, 'JPEG', 0, 0, width, height);
-            }
+            const width = window.innerWidth; const height = window.innerHeight; const orientation = width > height ? 'l' : 'p';
+            const pdf = new jsPDF({ orientation: orientation, unit: 'px', format: [width, height] });
+            for (let i = 0; i < state.pages.length; i++) { if (i > 0) pdf.addPage([width, height], orientation); const page = state.pages[i]; const composite = getCompositedCanvas(page.canvas); const imgData = composite.toDataURL('image/jpeg', 0.95); pdf.addImage(imgData, 'JPEG', 0, 0, width, height); }
             pdf.save('whiteboard-export.pdf');
         }
 
-        async function convertInkToText() {
+        async function convertInkToText() { /* ... unchanged ... */
             if(state.selection.active) stampSelection();
             const page = state.pages[state.activePageIndex];
             if(!page) return;
-
             const loading = document.getElementById('loading-overlay');
             const originalText = loading.innerHTML;
             loading.innerHTML = '<i class="fas fa-spinner fa-spin mr-3"></i> Processing Text...';
             loading.classList.remove('fade-out');
-
             try {
-                // Prepare Image for OCR (Black text on white background)
-                const tempCanvas = document.createElement('canvas');
-                tempCanvas.width = page.canvas.width;
-                tempCanvas.height = page.canvas.height;
-                const tCtx = tempCanvas.getContext('2d');
-
-                // 1. Draw original ink (white)
-                tCtx.drawImage(page.canvas, 0, 0);
-                
-                // 2. Turn ink black using source-in composition
-                // This keeps opacity of ink but changes color to black
-                tCtx.globalCompositeOperation = 'source-in';
-                tCtx.fillStyle = '#000000';
-                tCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
-
-                // 3. Composite onto white background
-                const finalCanvas = document.createElement('canvas');
-                finalCanvas.width = page.canvas.width;
-                finalCanvas.height = page.canvas.height;
-                const fCtx = finalCanvas.getContext('2d');
-                fCtx.fillStyle = '#ffffff';
-                fCtx.fillRect(0, 0, finalCanvas.width, finalCanvas.height);
-                fCtx.drawImage(tempCanvas, 0, 0);
-
-                // Run Tesseract
+                const tempCanvas = document.createElement('canvas'); tempCanvas.width = page.canvas.width; tempCanvas.height = page.canvas.height; const tCtx = tempCanvas.getContext('2d');
+                tCtx.drawImage(page.canvas, 0, 0); tCtx.globalCompositeOperation = 'source-in'; tCtx.fillStyle = '#000000'; tCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+                const finalCanvas = document.createElement('canvas'); finalCanvas.width = page.canvas.width; finalCanvas.height = page.canvas.height; const fCtx = finalCanvas.getContext('2d');
+                fCtx.fillStyle = '#ffffff'; fCtx.fillRect(0, 0, finalCanvas.width, finalCanvas.height); fCtx.drawImage(tempCanvas, 0, 0);
                 const { data: { text } } = await Tesseract.recognize(finalCanvas, 'eng');
-                
                 document.getElementById('text-result-content').textContent = text.trim() || "No text detected.";
                 document.getElementById('text-result-modal').classList.remove('hidden');
-
-            } catch (e) {
-                console.error(e);
-                alert("Failed to recognize text. Please try again.");
-            } finally {
-                loading.classList.add('fade-out');
-                setTimeout(() => loading.innerHTML = originalText, 500);
-            }
+            } catch (e) { console.error(e); alert("Failed to recognize text."); } finally { loading.classList.add('fade-out'); setTimeout(() => loading.innerHTML = originalText, 500); }
         }
 
-        // --- Collaboration Logic ---
-
-        function handleCollabButton() {
-            if (state.isCollaborating) {
-                // If already collaborating (host or guest), show share modal
-                showShareModal();
-            } else {
-                // If not, start hosting a new session
-                startHosting();
-            }
-        }
-
-        async function startHosting() {
-            if (!window.firebaseModules) {
-                alert("Firebase modules loading... please wait.");
-                return;
-            }
-            
-            // Generate Session ID
-            currentSessionId = crypto.randomUUID();
-            
-            // Update URL without reload
-            try {
-                const newUrl = '?session=' + currentSessionId;
-                window.history.pushState({ path: newUrl }, '', newUrl);
-            } catch (e) {
-                console.log("Unable to update URL history (likely in a sandbox/preview environment). Session ID generated internally.");
-            }
-            
-            // Initialize Firebase connection
-            await initCollaboration(currentSessionId);
-            
-            // Show Share UI immediately
-            showShareModal();
-        }
-
-        async function initCollaboration(sessionId) {
-            if (state.isCollaborating) return;
-
-            const btn = document.getElementById('btn-collab');
-            const dot = document.getElementById('collab-dot');
-            const txt = document.getElementById('collab-text');
-            const shareBtn = document.getElementById('btn-share-link');
-            
-            txt.textContent = "Connecting...";
-            
-            try {
-                if (!db) {
-                    const { initializeApp, getAuth, signInAnonymously, signInWithCustomToken, getFirestore } = window.firebaseModules;
-                    const firebaseConfig = JSON.parse(__firebase_config);
-                    const app = initializeApp(firebaseConfig);
-                    auth = getAuth(app);
-                    db = getFirestore(app);
-                    
-                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                        await signInWithCustomToken(auth, __initial_auth_token);
-                    } else {
-                        await signInAnonymously(auth);
-                    }
-                    userId = auth.currentUser.uid;
-                }
-
-                setupRealtimeListener(sessionId);
-                
-                state.isCollaborating = true;
-                txt.textContent = "Live";
-                dot.classList.add('online');
-                document.getElementById('toolbar-content').classList.add('collab-active');
-                shareBtn.classList.remove('hidden'); // Show share button next to Live status
-                
-            } catch (e) {
-                console.error("Collab Error:", e);
-                txt.textContent = "Error";
-                setTimeout(() => { txt.textContent = "Host"; }, 2000);
-            }
-        }
-
-        function setupRealtimeListener(sessionId) {
-            const { collection, onSnapshot } = window.firebaseModules;
-            // Use specific session path
-            const strokesCollection = collection(db, 'artifacts', appId, 'sessions', sessionId, 'strokes');
-
-            unsubscribeStrokes = onSnapshot(strokesCollection, (snapshot) => {
-                snapshot.docChanges().forEach((change) => {
-                    if (change.type === "added") {
-                        const stroke = change.doc.data();
-                        if (stroke.userId !== userId) {
-                            drawRemoteStroke(stroke);
-                        }
-                    }
-                });
-            }, (error) => {
-                console.error("Sync Error:", error);
-            });
-        }
-
-        function drawRemoteStroke(stroke) {
-            // Ensure page exists
-            while (state.pages.length <= stroke.pageIndex) {
-                addPage(false); 
-            }
-            
-            const page = state.pages[stroke.pageIndex];
-            const ctx = page.ctx;
-            const points = stroke.points;
-            if (!points || points.length < 2) return;
-
-            ctx.save();
-            ctx.lineCap = 'round';
-            ctx.lineJoin = 'round';
-            
-            if (stroke.tool === 'eraser') {
-                ctx.globalCompositeOperation = 'destination-out';
-                ctx.lineWidth = stroke.baseSize * 3;
-            } else {
-                ctx.globalCompositeOperation = 'source-over';
-                ctx.strokeStyle = stroke.color;
-            }
-
-            for (let i = 1; i < points.length; i++) {
-                const p1 = points[i-1];
-                const p2 = points[i];
-                const pressure = p2.p || 0.5;
-                
-                ctx.beginPath();
-                ctx.moveTo(p1.x, p1.y);
-                ctx.lineTo(p2.x, p2.y);
-                
-                if (stroke.tool !== 'eraser') {
-                    ctx.lineWidth = Math.max(0.5, stroke.baseSize * pressure * 2);
-                }
-                ctx.stroke();
-            }
-            ctx.restore();
-        }
-
-        function showShareModal() {
-            const input = document.getElementById('share-link-input');
-            let url = window.location.href;
-            
-            // If the URL in the address bar doesn't have the session (because pushState failed), append it
-            if (currentSessionId && !url.includes(currentSessionId)) {
-                const separator = url.includes('?') ? '&' : '?';
-                url = url + separator + 'session=' + currentSessionId;
-            }
-            
-            input.value = url;
-            document.getElementById('share-modal').classList.remove('hidden');
-        }
-
-        function closeShareModal() {
-            document.getElementById('share-modal').classList.add('hidden');
-        }
-
-        function copyShareLink() {
-            const input = document.getElementById('share-link-input');
-            input.select();
-            document.execCommand('copy'); 
-            // visual feedback could be added here
-        }
-
-        function closeTextModal() {
-            document.getElementById('text-result-modal').classList.add('hidden');
-        }
-        function copyTextResult() {
-            const text = document.getElementById('text-result-content').textContent;
-            navigator.clipboard.writeText(text);
-            closeTextModal();
-        }
+        function closeTextModal() { document.getElementById('text-result-modal').classList.add('hidden'); }
+        function copyTextResult() { navigator.clipboard.writeText(document.getElementById('text-result-content').textContent); closeTextModal(); }
         
-        function setTool(t) {
-            if(state.selection.active) stampSelection();
-            state.tool = t;
-            document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
-            document.getElementById(`btn-${t}`).classList.add('active');
-        }
+        function setTool(t) { if(state.selection.active) stampSelection(); state.tool = t; document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active')); document.getElementById(`btn-${t}`).classList.add('active'); }
         function toggleEraser() { setTool(state.tool === 'eraser' ? 'pen' : 'eraser'); }
         function updateSize(v) { state.baseSize = parseInt(v); document.getElementById('sizeValue').textContent = v + 'px'; }
         document.getElementById('colorPicker').addEventListener('input', e => { state.color = e.target.value; setTool('pen'); });
@@ -1198,164 +1135,22 @@
         function adjustSize(delta) { let s = state.baseSize + delta; s = Math.max(1, Math.min(50, s)); updateSize(s); document.getElementById('sizeSlider').value = s; }
         function toggleGrid() { scrollView.classList.toggle('grid-bg'); }
 
-        // --- RESTORED MISSING UTILITY FUNCTIONS ---
-
         function saveStateToPage(pageIndex) {
-            const page = state.pages[pageIndex];
-            if (!page) return;
+            const page = state.pages[pageIndex]; if (!page) return;
             if (page.historyStep < page.history.length - 1) page.history = page.history.slice(0, page.historyStep + 1);
-            page.history.push(page.canvas.toDataURL());
-            if (page.history.length > MAX_HISTORY) page.history.shift(); else page.historyStep++;
+            page.history.push(page.canvas.toDataURL()); if (page.history.length > MAX_HISTORY) page.history.shift(); else page.historyStep++;
         }
-
-        function undo() {
-            if (state.selection.active) stampSelection();
-            const page = state.pages[state.activePageIndex];
-            if (page && page.historyStep > 0) { 
-                page.historyStep--; 
-                restoreState(page);
-                triggerSave();
-            }
-        }
-
-        function redo() {
-            if (state.selection.active) stampSelection();
-            const page = state.pages[state.activePageIndex];
-            if (page && page.historyStep < page.history.length - 1) { 
-                page.historyStep++; 
-                restoreState(page);
-                triggerSave();
-            }
-        }
-
-        function restoreState(page) {
-            if (!page.history[page.historyStep]) {
-                page.ctx.clearRect(0, 0, page.canvas.width, page.canvas.height);
-                return;
-            }
-            const img = new Image(); img.src = page.history[page.historyStep];
-            img.onload = () => {
-                page.ctx.save(); page.ctx.setTransform(1, 0, 0, 1, 0, 0);
-                page.ctx.clearRect(0, 0, page.canvas.width, page.canvas.height);
-                page.ctx.drawImage(img, 0, 0); page.ctx.restore();
-            };
-        }
-        
-        function clearCanvas() {
-            if(state.selection.active) stampSelection();
-            const page = state.pages[state.activePageIndex];
-            if (!page) return;
-            page.ctx.save(); page.ctx.setTransform(1, 0, 0, 1, 0, 0);
-            page.ctx.clearRect(0, 0, page.canvas.width, page.canvas.height);
-            page.ctx.restore();
-            saveStateToPage(state.activePageIndex);
-            triggerSave();
-        }
-
-        function getCompositedCanvas(sourceCanvas) {
-            const tempCanvas = document.createElement('canvas');
-            tempCanvas.width = sourceCanvas.width;
-            tempCanvas.height = sourceCanvas.height;
-            const ctx = tempCanvas.getContext('2d');
-            ctx.fillStyle = '#18181b'; 
-            ctx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
-            ctx.drawImage(sourceCanvas, 0, 0);
-            return tempCanvas;
-        }
-
-        function downloadCanvas() {
-            if(state.selection.active) stampSelection();
-            const page = state.pages[state.activePageIndex];
-            if(!page) return;
-            const composite = getCompositedCanvas(page.canvas);
-            const link = document.createElement('a'); 
-            link.download = `whiteboard-p${state.activePageIndex+1}.png`;
-            link.href = composite.toDataURL('image/png'); 
-            link.click();
-        }
-
-        function deleteSelection() {
-            if (!state.selection.active) return;
-            liftSelection();
-            state.selection.active = false; state.selection.image = null; state.lassoPath = [];
-            selectionUi.classList.remove('active');
-            saveStateToPage(state.activePageIndex);
-            triggerSave();
-        }
-
-        function stampSelection() {
-            if (!state.selection.active) return;
-            if (state.selection.image) {
-                const page = state.pages[state.selection.pageIndex];
-                const dpr = window.devicePixelRatio || 1;
-                page.ctx.drawImage(state.selection.image, state.selection.x * dpr, state.selection.y * dpr);
-            }
-            state.selection.active = false; state.selection.image = null; state.lassoPath = [];
-            selectionUi.classList.remove('active');
-            saveStateToPage(state.selection.pageIndex);
-            triggerSave();
-        }
-
-        function updateSelectionVisuals() {
-            const ui = selectionUi;
-            const s = state.selection;
-            const page = state.pages[s.pageIndex];
-            if (s.active && page) {
-                ui.style.left = `${page.canvas.offsetLeft + s.x}px`;
-                ui.style.top = `${page.canvas.offsetTop + s.y}px`;
-                ui.style.width = `${s.w}px`;
-                ui.style.height = `${s.h}px`;
-                ui.classList.add('active');
-            } else ui.classList.remove('active');
-        }
-
-        function renderSelectionMove() {
-            if (!state.selection.image) return;
-            const page = state.pages[state.selection.pageIndex];
-            const dpr = window.devicePixelRatio || 1;
-            page.ctx.save();
-            page.ctx.setTransform(1, 0, 0, 1, 0, 0);
-            page.ctx.clearRect(0, 0, page.canvas.width, page.canvas.height);
-            page.ctx.drawImage(baseCanvas, 0, 0);
-            page.ctx.drawImage(state.selection.image, state.selection.x * dpr, state.selection.y * dpr);
-            page.ctx.restore();
-        }
-
-        function selectAll() {
-            if (state.selection.active) stampSelection();
-            const page = state.pages[state.activePageIndex];
-            if (!page) return;
-
-            const dpr = window.devicePixelRatio || 1;
-            const w = page.canvas.width / dpr;
-            const h = page.canvas.height / dpr;
-
-            const selCanvas = document.createElement('canvas');
-            selCanvas.width = page.canvas.width; 
-            selCanvas.height = page.canvas.height;
-            const selCtx = selCanvas.getContext('2d');
-            selCtx.drawImage(page.canvas, 0, 0);
-
-            state.selection = {
-                active: true,
-                pageIndex: state.activePageIndex,
-                x: 0,
-                y: 0,
-                w: w,
-                h: h,
-                image: selCanvas
-            };
-
-            page.ctx.clearRect(0, 0, page.canvas.width, page.canvas.height);
-
-            baseCanvas.width = page.canvas.width;
-            baseCanvas.height = page.canvas.height;
-            let baseCtx = baseCanvas.getContext('2d');
-            baseCtx.clearRect(0, 0, baseCanvas.width, baseCanvas.height);
-
-            state.mode = 'SELECTION_ACTIVE';
-            updateSelectionVisuals();
-        }
+        function undo() { if (state.selection.active) stampSelection(); const page = state.pages[state.activePageIndex]; if (page && page.historyStep > 0) { page.historyStep--; restoreState(page); triggerSave(); } }
+        function redo() { if (state.selection.active) stampSelection(); const page = state.pages[state.activePageIndex]; if (page && page.historyStep < page.history.length - 1) { page.historyStep++; restoreState(page); triggerSave(); } }
+        function restoreState(page) { if (!page.history[page.historyStep]) { page.ctx.clearRect(0, 0, page.canvas.width, page.canvas.height); return; } const img = new Image(); img.src = page.history[page.historyStep]; img.onload = () => { page.ctx.save(); page.ctx.setTransform(1, 0, 0, 1, 0, 0); page.ctx.clearRect(0, 0, page.canvas.width, page.canvas.height); page.ctx.drawImage(img, 0, 0); page.ctx.restore(); }; }
+        function clearCanvas() { if(state.selection.active) stampSelection(); const page = state.pages[state.activePageIndex]; if (!page) return; page.ctx.save(); page.ctx.setTransform(1, 0, 0, 1, 0, 0); page.ctx.clearRect(0, 0, page.canvas.width, page.canvas.height); page.ctx.restore(); saveStateToPage(state.activePageIndex); triggerSave(); }
+        function getCompositedCanvas(sourceCanvas) { const tempCanvas = document.createElement('canvas'); tempCanvas.width = sourceCanvas.width; tempCanvas.height = sourceCanvas.height; const ctx = tempCanvas.getContext('2d'); ctx.fillStyle = '#18181b'; ctx.fillRect(0, 0, tempCanvas.width, tempCanvas.height); ctx.drawImage(sourceCanvas, 0, 0); return tempCanvas; }
+        function downloadCanvas() { if(state.selection.active) stampSelection(); const page = state.pages[state.activePageIndex]; if(!page) return; const composite = getCompositedCanvas(page.canvas); const link = document.createElement('a'); link.download = `whiteboard-p${state.activePageIndex+1}.png`; link.href = composite.toDataURL('image/png'); link.click(); }
+        function deleteSelection() { if (!state.selection.active) return; liftSelection(); state.selection.active = false; state.selection.image = null; state.lassoPath = []; selectionUi.classList.remove('active'); saveStateToPage(state.activePageIndex); triggerSave(); }
+        function stampSelection() { if (!state.selection.active) return; if (state.selection.image) { const page = state.pages[state.selection.pageIndex]; const dpr = window.devicePixelRatio || 1; page.ctx.drawImage(state.selection.image, state.selection.x * dpr, state.selection.y * dpr); } state.selection.active = false; state.selection.image = null; state.lassoPath = []; selectionUi.classList.remove('active'); saveStateToPage(state.selection.pageIndex); triggerSave(); }
+        function updateSelectionVisuals() { const ui = selectionUi; const s = state.selection; const page = state.pages[s.pageIndex]; if (s.active && page) { ui.style.left = `${page.canvas.offsetLeft + s.x}px`; ui.style.top = `${page.canvas.offsetTop + s.y}px`; ui.style.width = `${s.w}px`; ui.style.height = `${s.h}px`; ui.classList.add('active'); } else ui.classList.remove('active'); }
+        function renderSelectionMove() { if (!state.selection.image) return; const page = state.pages[state.selection.pageIndex]; const dpr = window.devicePixelRatio || 1; page.ctx.save(); page.ctx.setTransform(1, 0, 0, 1, 0, 0); page.ctx.clearRect(0, 0, page.canvas.width, page.canvas.height); page.ctx.drawImage(baseCanvas, 0, 0); page.ctx.drawImage(state.selection.image, state.selection.x * dpr, state.selection.y * dpr); page.ctx.restore(); }
+        function selectAll() { if (state.selection.active) stampSelection(); const page = state.pages[state.activePageIndex]; if (!page) return; const dpr = window.devicePixelRatio || 1; const w = page.canvas.width / dpr; const h = page.canvas.height / dpr; const selCanvas = document.createElement('canvas'); selCanvas.width = page.canvas.width; selCanvas.height = page.canvas.height; const selCtx = selCanvas.getContext('2d'); selCtx.drawImage(page.canvas, 0, 0); state.selection = { active: true, pageIndex: state.activePageIndex, x: 0, y: 0, w: w, h: h, image: selCanvas }; page.ctx.clearRect(0, 0, page.canvas.width, page.canvas.height); baseCanvas.width = page.canvas.width; baseCanvas.height = page.canvas.height; let baseCtx = baseCanvas.getContext('2d'); baseCtx.clearRect(0, 0, baseCanvas.width, baseCanvas.height); state.mode = 'SELECTION_ACTIVE'; updateSelectionVisuals(); }
 
         window.addEventListener('load', init);
         window.addEventListener('keydown', (e) => {
