@@ -16,7 +16,7 @@
         body {
             margin: 0;
             overflow: hidden; 
-            background-color: #ffffff; /* Changed to White */
+            background-color: #f4f4f5; /* Light grey background for app shell */
             touch-action: none; 
             user-select: none;
             font-family: 'Inter', sans-serif;
@@ -40,8 +40,11 @@
             flex-direction: column;
             align-items: center;
             width: 100%;
+            /* Constrain max width to standard desktop size for better viewing on large screens */
+            max-width: 1920px; 
+            margin: 0 auto;
             min-height: 100%;
-            padding-bottom: 20vh; /* Reduced padding for mobile */
+            padding-bottom: 20vh; 
             padding-top: 10px;
         }
 
@@ -50,8 +53,12 @@
             touch-action: none;
             margin-bottom: 20px; 
             background-color: #ffffff;
-            border-bottom: 1px dashed #e4e4e7; /* Light gray dashed */
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); /* Softer shadow */
+            border: 1px solid #e4e4e7;
+            /* Force 16:9 Aspect Ratio scaling */
+            width: 95%; /* Little margins */
+            height: auto;
+            aspect-ratio: 16 / 9;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
         }
         
         .pan-active .page-canvas {
@@ -59,11 +66,12 @@
         }
 
         .page-canvas:last-child {
-            border-bottom: none;
+            border-bottom: 1px solid #e4e4e7;
         }
 
+        /* Grid inside canvas container now handled via CSS on canvas parent or body */
         .grid-bg {
-            background-image: radial-gradient(#d4d4d8 1px, transparent 1px); /* Lighter dots */
+            background-image: radial-gradient(#d4d4d8 1px, transparent 1px);
             background-size: 24px 24px;
             background-attachment: local; 
         }
@@ -337,6 +345,12 @@
             #quick-wheel {
                 transform: scale(0.8) translate(-60%, -60%);
             }
+            
+            /* On mobile, canvas fills width but keeps 16:9 ratio */
+            .page-canvas {
+                width: 100%;
+                margin-bottom: 15px;
+            }
         }
     </style>
 </head>
@@ -571,6 +585,10 @@
         let baseCtx = baseCanvas.getContext('2d');
         let saveTimeout = null;
 
+        // FIXED PC SCREEN SIZE
+        const CANVAS_WIDTH = 1920;
+        const CANVAS_HEIGHT = 1080;
+
         function init() {
             // Check for room param
             const urlParams = new URLSearchParams(window.location.search);
@@ -593,12 +611,6 @@
 
             setupObserver();
             setupGlobalEvents();
-            
-            // Check if mobile on init for initial tool
-            if (window.innerWidth < 768) {
-                // On mobile we might want to ensure controls are visible
-                // but default tool stays pen
-            }
         }
 
         // --- NAME MODAL LOGIC ---
@@ -920,7 +932,7 @@
                     pagesStack.appendChild(canvas);
                     state.pages.push({ id: `page-${idx}`, canvas, ctx, history: [imgData], historyStep: 0 });
                     const img = new Image();
-                    img.onload = () => ctx.drawImage(img, 0, 0, canvas.width / (window.devicePixelRatio||1), canvas.height / (window.devicePixelRatio||1));
+                    img.onload = () => ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
                     img.src = imgData;
                 });
                 state.activePageIndex = data.activeIndex || 0;
@@ -998,17 +1010,15 @@
             const canvas = document.createElement('canvas');
             canvas.className = 'page-canvas';
             canvas.id = `page-${index}`;
-            const dpr = window.devicePixelRatio || 1;
-            // Use window.innerWidth but subtract a tiny buffer to avoid rounding errors causing scrolls
-            const width = Math.max(1, window.innerWidth);
-            const height = Math.max(1, window.innerHeight); // Make it screen height
             
-            canvas.style.width = `${width}px`;
-            canvas.style.height = `${height}px`;
-            canvas.width = width * dpr;
-            canvas.height = height * dpr;
+            // Standardize resolution for "PC Screen" experience
+            canvas.width = CANVAS_WIDTH;
+            canvas.height = CANVAS_HEIGHT;
+            
+            // CSS handles the display size (responsive)
+            // No style.width needed here, handled by CSS class .page-canvas
+            
             const ctx = canvas.getContext('2d'); 
-            ctx.scale(dpr, dpr);
             ctx.lineCap = 'round';
             ctx.lineJoin = 'round';
             
@@ -1048,7 +1058,7 @@
                     const pageObj = { id: `page-${index}`, canvas, ctx, history: [dataURL], historyStep: 0 };
                     state.pages.push(pageObj);
                     const img = new Image();
-                    img.onload = () => { ctx.drawImage(img, 0, 0, canvas.width / (window.devicePixelRatio||1), canvas.height / (window.devicePixelRatio||1)); loadedCount++; if (loadedCount === data.pages.length) document.getElementById('loading-overlay').classList.add('fade-out'); };
+                    img.onload = () => { ctx.drawImage(img, 0, 0, canvas.width, canvas.height); loadedCount++; if (loadedCount === data.pages.length) document.getElementById('loading-overlay').classList.add('fade-out'); };
                     img.src = dataURL;
                 });
                 state.activePageIndex = Math.min(data.activePageIndex, state.pages.length - 1);
@@ -1089,24 +1099,15 @@
         }
 
         function resize() {
+            // Since we use CSS scaling for a fixed resolution canvas, 
+            // we don't need to rebuild the canvas on resize anymore.
+            // This prevents data loss on rotation.
             if(state.selection.active) stampSelection();
-            const dpr = window.devicePixelRatio || 1;
-            const width = Math.max(1, window.innerWidth);
-            const height = Math.max(1, window.innerHeight);
-            state.pages.forEach(page => {
-                let tempCanvas = null;
-                if (page.canvas.width > 0) { tempCanvas = document.createElement('canvas'); tempCanvas.width = page.canvas.width; tempCanvas.height = page.canvas.height; tempCanvas.getContext('2d').drawImage(page.canvas, 0, 0); }
-                page.canvas.style.width = `${width}px`; page.canvas.style.height = `${height}px`; page.canvas.width = width * dpr; page.canvas.height = height * dpr;
-                page.ctx.scale(dpr, dpr); page.ctx.lineCap = 'round'; page.ctx.lineJoin = 'round';
-                // Simply draw the old content back. On mobile rotation, this preserves content but might stretch or crop it.
-                // For a whiteboard, cropping/extending is better than stretching.
-                if (tempCanvas) page.ctx.drawImage(tempCanvas, 0, 0); 
-            });
-            baseCanvas.width = width * dpr; baseCanvas.height = height * dpr;
+            baseCanvas.width = CANVAS_WIDTH;
+            baseCanvas.height = CANVAS_HEIGHT;
         }
         window.addEventListener('resize', resize);
-        window.addEventListener('orientationchange', () => setTimeout(resize, 200));
-
+        
         function setupObserver() {
             const observer = new IntersectionObserver((entries) => {
                 entries.forEach(entry => { if (entry.isIntersecting) { const idx = state.pages.findIndex(p => p.canvas === entry.target); if (idx !== -1) { state.activePageIndex = idx; updatePageIndicator(); } } });
@@ -1141,22 +1142,23 @@
             if (!targetCanvas || targetCanvas.tagName !== 'CANVAS') return null;
             const pageIndex = state.pages.findIndex(p => p.canvas === targetCanvas); if (pageIndex === -1) return null;
             const rect = targetCanvas.getBoundingClientRect();
-            return { pageIndex, x: e.clientX - rect.left, y: e.clientY - rect.top, pressure: e.pressure, rect: rect };
+            
+            // Map screen coordinates (rect) to internal canvas coordinates (1920x1080)
+            const scaleX = targetCanvas.width / rect.width;
+            const scaleY = targetCanvas.height / rect.height;
+            
+            return { 
+                pageIndex, 
+                x: (e.clientX - rect.left) * scaleX, 
+                y: (e.clientY - rect.top) * scaleY, 
+                pressure: e.pressure, 
+                rect: rect 
+            };
         }
 
         function handlePointerDown(e) {
             // Pan Tool or Spacebar Logic
             if (state.isSpaceBarDown || state.tool === 'pan') { 
-                // Native scrolling handles panning if we don't preventDefault
-                // If we want custom drag panning:
-                /*
-                state.mode = 'PANNING'; 
-                state.lastX = e.clientX; 
-                state.lastY = e.clientY; 
-                state.startScrollTop = scrollView.scrollTop; 
-                scrollView.classList.add('cursor-panning'); 
-                */
-                // For mobile, we rely on native touch scrolling (by removing pointer-events from canvas)
                 return; 
             }
             
@@ -1235,8 +1237,14 @@
             const page = state.pages[pageIndex]; if (!page) return;
             const rect = page.canvas.getBoundingClientRect();
             const events = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
+            
+            // Calculate scale again for coalesced events since we need it per point
+            const scaleX = page.canvas.width / rect.width;
+            const scaleY = page.canvas.height / rect.height;
+
             events.forEach(event => {
-                const x = event.clientX - rect.left; const y = event.clientY - rect.top;
+                const x = (event.clientX - rect.left) * scaleX; 
+                const y = (event.clientY - rect.top) * scaleY;
                 const pressure = (event.pointerType === 'pen' && state.pressureEnabled) ? event.pressure : 0.5;
                 if (state.mode === 'DRAWING') { state.currentStrokePoints.push({ x: Math.round(x), y: Math.round(y), p: parseFloat(pressure.toFixed(2)) }); }
                 page.ctx.beginPath(); page.ctx.moveTo(state.lastX, state.lastY); page.ctx.lineTo(x, y);
@@ -1268,21 +1276,21 @@
             if (state.selection.image) return;
             const page = state.pages[state.selection.pageIndex];
             const s = state.selection;
-            const dpr = window.devicePixelRatio || 1;
+            // No dpr scaling needed with fixed logical resolution
             let minX=Infinity, minY=Infinity, maxX=-Infinity, maxY=-Infinity;
-            state.lassoPath.forEach(p => { const px = p.x * dpr, py = p.y * dpr; if (px < minX) minX = px; if (px > maxX) maxX = px; if (py < minY) minY = py; if (py > maxY) maxY = py; });
-            const pad = 5 * dpr; minX = Math.floor(minX - pad); minY = Math.floor(minY - pad); maxX = Math.ceil(maxX + pad); maxY = Math.ceil(maxY + pad);
+            state.lassoPath.forEach(p => { const px = p.x, py = p.y; if (px < minX) minX = px; if (px > maxX) maxX = px; if (py < minY) minY = py; if (py > maxY) maxY = py; });
+            const pad = 5; minX = Math.floor(minX - pad); minY = Math.floor(minY - pad); maxX = Math.ceil(maxX + pad); maxY = Math.ceil(maxY + pad);
             const w = maxX - minX, h = maxY - minY;
             if (w <= 0 || h <= 0) return;
-            s.x = minX / dpr; s.y = minY / dpr; s.w = w / dpr; s.h = h / dpr;
+            s.x = minX; s.y = minY; s.w = w; s.h = h;
             const selCanvas = document.createElement('canvas'); selCanvas.width = w; selCanvas.height = h; const selCtx = selCanvas.getContext('2d');
             selCtx.drawImage(page.canvas, -minX, -minY);
             selCtx.globalCompositeOperation = 'destination-in'; selCtx.beginPath();
-            state.lassoPath.forEach((p, i) => { const tx = (p.x * dpr) - minX, ty = (p.y * dpr) - minY; i===0 ? selCtx.moveTo(tx, ty) : selCtx.lineTo(tx, ty); });
+            state.lassoPath.forEach((p, i) => { const tx = p.x - minX, ty = p.y - minY; i===0 ? selCtx.moveTo(tx, ty) : selCtx.lineTo(tx, ty); });
             selCtx.closePath(); selCtx.fillStyle = '#000000'; selCtx.fill();
             s.image = selCanvas;
             page.ctx.save(); page.ctx.setTransform(1, 0, 0, 1, 0, 0); page.ctx.globalCompositeOperation = 'destination-out'; page.ctx.beginPath();
-            state.lassoPath.forEach((p, i) => { const tx = p.x * dpr, ty = p.y * dpr; i===0 ? page.ctx.moveTo(tx, ty) : page.ctx.lineTo(tx, ty); });
+            state.lassoPath.forEach((p, i) => { const tx = p.x, ty = p.y; i===0 ? page.ctx.moveTo(tx, ty) : page.ctx.lineTo(tx, ty); });
             page.ctx.fillStyle = '#000000'; page.ctx.fill(); page.ctx.restore();
             baseCanvas.width = page.canvas.width; baseCanvas.height = page.canvas.height; baseCtx.clearRect(0,0, baseCanvas.width, baseCanvas.height); baseCtx.drawImage(page.canvas, 0, 0);
         }
@@ -1290,7 +1298,7 @@
         async function downloadPDF() { /* ... unchanged ... */
             if(state.selection.active) stampSelection();
             const { jsPDF } = window.jspdf;
-            const width = window.innerWidth; const height = window.innerHeight; const orientation = width > height ? 'l' : 'p';
+            const width = CANVAS_WIDTH; const height = CANVAS_HEIGHT; const orientation = 'l';
             const pdf = new jsPDF({ orientation: orientation, unit: 'px', format: [width, height] });
             for (let i = 0; i < state.pages.length; i++) { if (i > 0) pdf.addPage([width, height], orientation); const page = state.pages[i]; const composite = getCompositedCanvas(page.canvas); const imgData = composite.toDataURL('image/jpeg', 0.95); pdf.addImage(imgData, 'JPEG', 0, 0, width, height); }
             pdf.save('whiteboard-export.pdf');
@@ -1353,10 +1361,26 @@
         function getCompositedCanvas(sourceCanvas) { const tempCanvas = document.createElement('canvas'); tempCanvas.width = sourceCanvas.width; tempCanvas.height = sourceCanvas.height; const ctx = tempCanvas.getContext('2d'); ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, tempCanvas.width, tempCanvas.height); ctx.drawImage(sourceCanvas, 0, 0); return tempCanvas; }
         function downloadCanvas() { if(state.selection.active) stampSelection(); const page = state.pages[state.activePageIndex]; if(!page) return; const composite = getCompositedCanvas(page.canvas); const link = document.createElement('a'); link.download = `whiteboard-p${state.activePageIndex+1}.png`; link.href = composite.toDataURL('image/png'); link.click(); }
         function deleteSelection() { if (!state.selection.active) return; liftSelection(); state.selection.active = false; state.selection.image = null; state.lassoPath = []; selectionUi.classList.remove('active'); saveStateToPage(state.activePageIndex); triggerSave(); }
-        function stampSelection() { if (!state.selection.active) return; if (state.selection.image) { const page = state.pages[state.selection.pageIndex]; const dpr = window.devicePixelRatio || 1; page.ctx.drawImage(state.selection.image, state.selection.x * dpr, state.selection.y * dpr); } state.selection.active = false; state.selection.image = null; state.lassoPath = []; selectionUi.classList.remove('active'); saveStateToPage(state.selection.pageIndex); triggerSave(); }
-        function updateSelectionVisuals() { const ui = selectionUi; const s = state.selection; const page = state.pages[s.pageIndex]; if (s.active && page) { ui.style.left = `${page.canvas.offsetLeft + s.x}px`; ui.style.top = `${page.canvas.offsetTop + s.y}px`; ui.style.width = `${s.w}px`; ui.style.height = `${s.h}px`; ui.classList.add('active'); } else ui.classList.remove('active'); }
-        function renderSelectionMove() { if (!state.selection.image) return; const page = state.pages[state.selection.pageIndex]; const dpr = window.devicePixelRatio || 1; page.ctx.save(); page.ctx.setTransform(1, 0, 0, 1, 0, 0); page.ctx.clearRect(0, 0, page.canvas.width, page.canvas.height); page.ctx.drawImage(baseCanvas, 0, 0); page.ctx.drawImage(state.selection.image, state.selection.x * dpr, state.selection.y * dpr); page.ctx.restore(); }
-        function selectAll() { if (state.selection.active) stampSelection(); const page = state.pages[state.activePageIndex]; if (!page) return; const dpr = window.devicePixelRatio || 1; const w = page.canvas.width / dpr; const h = page.canvas.height / dpr; const selCanvas = document.createElement('canvas'); selCanvas.width = page.canvas.width; selCanvas.height = page.canvas.height; const selCtx = selCanvas.getContext('2d'); selCtx.drawImage(page.canvas, 0, 0); state.selection = { active: true, pageIndex: state.activePageIndex, x: 0, y: 0, w: w, h: h, image: selCanvas }; page.ctx.clearRect(0, 0, page.canvas.width, page.canvas.height); baseCanvas.width = page.canvas.width; baseCanvas.height = page.canvas.height; let baseCtx = baseCanvas.getContext('2d'); baseCtx.clearRect(0, 0, baseCanvas.width, baseCanvas.height); state.mode = 'SELECTION_ACTIVE'; updateSelectionVisuals(); }
+        function stampSelection() { if (!state.selection.active) return; if (state.selection.image) { const page = state.pages[state.selection.pageIndex]; const dpr = 1; page.ctx.drawImage(state.selection.image, state.selection.x, state.selection.y); } state.selection.active = false; state.selection.image = null; state.lassoPath = []; selectionUi.classList.remove('active'); saveStateToPage(state.selection.pageIndex); triggerSave(); }
+        function updateSelectionVisuals() { 
+            const ui = selectionUi; 
+            const s = state.selection; 
+            const page = state.pages[s.pageIndex]; 
+            if (s.active && page) { 
+                // We need to map internal coordinates back to visual CSS coordinates
+                const rect = page.canvas.getBoundingClientRect();
+                const scaleX = rect.width / page.canvas.width;
+                const scaleY = rect.height / page.canvas.height;
+                
+                ui.style.left = `${page.canvas.offsetLeft + (s.x * scaleX)}px`; 
+                ui.style.top = `${page.canvas.offsetTop + (s.y * scaleY)}px`; 
+                ui.style.width = `${s.w * scaleX}px`; 
+                ui.style.height = `${s.h * scaleY}px`; 
+                ui.classList.add('active'); 
+            } else ui.classList.remove('active'); 
+        }
+        function renderSelectionMove() { if (!state.selection.image) return; const page = state.pages[state.selection.pageIndex]; page.ctx.save(); page.ctx.setTransform(1, 0, 0, 1, 0, 0); page.ctx.clearRect(0, 0, page.canvas.width, page.canvas.height); page.ctx.drawImage(baseCanvas, 0, 0); page.ctx.drawImage(state.selection.image, state.selection.x, state.selection.y); page.ctx.restore(); }
+        function selectAll() { if (state.selection.active) stampSelection(); const page = state.pages[state.activePageIndex]; if (!page) return; const w = page.canvas.width; const h = page.canvas.height; const selCanvas = document.createElement('canvas'); selCanvas.width = page.canvas.width; selCanvas.height = page.canvas.height; const selCtx = selCanvas.getContext('2d'); selCtx.drawImage(page.canvas, 0, 0); state.selection = { active: true, pageIndex: state.activePageIndex, x: 0, y: 0, w: w, h: h, image: selCanvas }; page.ctx.clearRect(0, 0, page.canvas.width, page.canvas.height); baseCanvas.width = page.canvas.width; baseCanvas.height = page.canvas.height; let baseCtx = baseCanvas.getContext('2d'); baseCtx.clearRect(0, 0, baseCanvas.width, baseCanvas.height); state.mode = 'SELECTION_ACTIVE'; updateSelectionVisuals(); }
 
         window.addEventListener('load', init);
         window.addEventListener('keydown', (e) => {
