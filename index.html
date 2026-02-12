@@ -229,6 +229,30 @@
             display: inline-block; margin-right: 6px;
         }
         .collab-status-dot.online { background: #3b82f6; box-shadow: 0 0 8px #3b82f6; }
+        
+        /* Mic Pulse */
+        @keyframes pulse-green {
+            0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+            70% { box-shadow: 0 0 0 10px rgba(16, 185, 129, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+        }
+        .mic-active {
+            color: #10b981 !important;
+            animation: pulse-green 2s infinite;
+        }
+        .mic-off {
+            color: #ef4444 !important;
+        }
+
+        /* Participants Panel */
+        #participants-panel {
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        #participants-panel.hidden-panel {
+            transform: translateY(-20px);
+            opacity: 0;
+            pointer-events: none;
+        }
     </style>
 </head>
 <body id="body-bg">
@@ -246,6 +270,16 @@
                 <button onclick="closeTextModal()" class="px-4 py-2 text-zinc-400 hover:text-white text-sm font-medium">Close</button>
                 <button onclick="copyTextResult()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-medium shadow-lg transition-colors"><i class="fas fa-copy mr-2"></i>Copy Text</button>
             </div>
+        </div>
+    </div>
+
+    <!-- Name Entry Modal -->
+    <div id="name-modal" class="hidden fixed inset-0 z-[70] flex items-center justify-center bg-black/80 backdrop-blur-md">
+        <div class="bg-zinc-900 border border-zinc-700 rounded-xl p-6 w-full max-w-sm shadow-2xl transform scale-100 transition-all">
+            <h3 class="text-lg font-bold text-white mb-2"><i class="fas fa-user-tag text-blue-500 mr-2"></i>Join Session</h3>
+            <p class="text-zinc-400 text-sm mb-4">Please enter your name to continue.</p>
+            <input type="text" id="username-input" class="w-full bg-zinc-800 border border-zinc-600 text-white rounded-lg px-4 py-2 mb-4 outline-none focus:border-blue-500" placeholder="Your Name">
+            <button onclick="submitName()" class="w-full px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-medium transition-colors">Continue</button>
         </div>
     </div>
 
@@ -299,6 +333,17 @@
         <button onclick="setTool('eraser')" class="wheel-btn absolute bottom-[15%] left-[15%]" title="Eraser"><i class="fas fa-eraser"></i></button>
     </div>
 
+    <!-- Participants Panel (Floating Top Right) -->
+    <div id="participants-panel" class="hidden-panel fixed top-20 right-6 z-40 bg-zinc-800/90 border border-zinc-700 rounded-xl p-4 w-64 shadow-xl backdrop-blur-md">
+        <div class="flex justify-between items-center mb-3 border-b border-zinc-700 pb-2">
+            <h4 class="text-zinc-200 font-semibold text-sm">Participants</h4>
+            <span id="participant-count-badge" class="bg-zinc-700 text-zinc-300 text-xs px-2 py-0.5 rounded-full">1</span>
+        </div>
+        <ul id="participants-list" class="space-y-2 max-h-48 overflow-y-auto pr-1">
+            <!-- List populated via JS -->
+        </ul>
+    </div>
+
     <!-- Top Toolbar Wrapper with Toggle -->
     <div id="toolbar-wrapper" class="fixed top-0 left-1/2 transform -translate-x-1/2 z-50 flex flex-col items-center pt-4">
         <div id="toolbar-content" class="bg-zinc-800/80 border border-zinc-700 rounded-full shadow-xl px-4 py-2 flex items-center gap-4 backdrop-blur-md transition-all">
@@ -307,6 +352,17 @@
                 <span id="collab-dot" class="collab-status-dot"></span>
                 <span id="collab-text">Host</span>
             </button>
+            
+            <!-- Participants Toggle -->
+            <button onclick="toggleParticipants()" id="btn-participants" class="hidden w-8 h-8 rounded-full text-zinc-300 hover:text-white hover:bg-zinc-700 flex items-center justify-center transition-colors" title="View Participants">
+                <i class="fas fa-users"></i>
+            </button>
+
+            <!-- Mic Button (Hidden until connected) -->
+            <button onclick="toggleMic()" id="btn-mic" class="hidden w-8 h-8 rounded-full text-zinc-300 hover:text-white hover:bg-zinc-700 flex items-center justify-center transition-colors" title="Toggle Microphone">
+                <i class="fas fa-microphone-slash"></i>
+            </button>
+
             <!-- Share Link Button (Hidden by default) -->
             <button onclick="showShareModal()" id="btn-share-link" class="hidden w-8 h-8 rounded-full text-zinc-300 hover:text-white hover:bg-zinc-700 flex items-center justify-center transition-colors" title="Share Session Link">
                 <i class="fas fa-share-alt"></i>
@@ -374,12 +430,16 @@
         </div>
     </div>
 
+    <!-- Hidden audio container for remote streams -->
+    <div id="remote-audio-container" class="hidden"></div>
+
     <script>
         const pagesStack = document.getElementById('pages-stack');
         const scrollView = document.getElementById('scroll-view');
         const quickWheel = document.getElementById('quick-wheel');
         const selectionUi = document.getElementById('selection-ui');
         const gestureZone = document.getElementById('gesture-zone');
+        const audioContainer = document.getElementById('remote-audio-container');
         
         let state = {
             mode: 'IDLE', 
@@ -390,14 +450,23 @@
             pages: [], activePageIndex: 0, 
             lassoPath: [], lassoSnapshot: null, 
             selection: { active: false, pageIndex: -1, x: 0, y: 0, w: 0, h: 0, image: null },
-            strokeStartX: 0, strokeStartY: 0, strokeStartTime: 0, // Track stroke gesture
+            strokeStartX: 0, strokeStartY: 0, strokeStartTime: 0, 
             
             // P2P State
             isHost: false,
             peer: null,
             connections: [],
             roomId: null,
-            currentStrokePoints: []
+            currentStrokePoints: [],
+            
+            // User Info
+            username: "Guest",
+            pendingRoomId: null, // If joining via link
+            participants: [], // List of {id, name}
+
+            // Voice State
+            localStream: null,
+            isMicOn: false
         };
 
         const MAX_HISTORY = 30;
@@ -418,23 +487,50 @@
             }
 
             if (roomParam) {
-                // We are a guest trying to join
-                joinSession(roomParam);
+                // If room param exists, trigger name modal flow
+                state.pendingRoomId = roomParam;
+                document.getElementById('collab-text').textContent = "Join Session...";
+                showNameModal();
             }
 
             setupObserver();
             setupGlobalEvents();
         }
 
+        // --- NAME MODAL LOGIC ---
+        function showNameModal() {
+            document.getElementById('name-modal').classList.remove('hidden');
+            document.getElementById('username-input').focus();
+        }
+
+        function submitName() {
+            const input = document.getElementById('username-input');
+            const name = input.value.trim();
+            if (name) {
+                state.username = name;
+                document.getElementById('name-modal').classList.add('hidden');
+                
+                if (state.pendingRoomId) {
+                    // Completing a join flow
+                    joinSession(state.pendingRoomId);
+                    state.pendingRoomId = null;
+                } else {
+                    // Completing a host flow
+                    startHosting();
+                }
+            } else {
+                input.classList.add('border-red-500');
+            }
+        }
+
         // --- P2P LOGIC START ---
 
         function handleCollabButton() {
             if (state.peer && !state.peer.destroyed) {
-                // Already connected/hosting, show share modal
                 showShareModal();
             } else {
-                // Not connected, start hosting
-                startHosting();
+                // Start hosting flow -> ask name first
+                showNameModal();
             }
         }
 
@@ -446,15 +542,18 @@
             txt.textContent = "Starting...";
 
             state.isHost = true;
-            // Generate a random ID for the room
             state.roomId = 'wb-' + Math.random().toString(36).substr(2, 9);
             
+            // Add self to participants list
+            updateParticipantsList([{ id: 'host', name: state.username + " (You)", isHost: true }]);
+
             state.peer = new Peer(state.roomId, {
-                debug: 2,
+                debug: 1,
                 config: {
                     iceServers: [
                         { urls: 'stun:stun.l.google.com:19302' },
-                        { urls: 'stun:stun1.l.google.com:19302' }
+                        { urls: 'stun:stun1.l.google.com:19302' },
+                        { urls: 'stun:stun.services.mozilla.com' }
                     ]
                 }
             });
@@ -465,8 +564,9 @@
                 dot.classList.add('online');
                 document.getElementById('toolbar-content').classList.add('collab-active');
                 document.getElementById('btn-share-link').classList.remove('hidden');
+                document.getElementById('btn-mic').classList.remove('hidden');
+                document.getElementById('btn-participants').classList.remove('hidden');
                 
-                // Update URL without reload if possible
                 try {
                     const newUrl = window.location.pathname + '?room=' + id;
                     window.history.pushState({ path: newUrl }, '', newUrl);
@@ -478,9 +578,9 @@
             state.peer.on('connection', (conn) => {
                 console.log('Peer connected:', conn.peer);
                 setupConnection(conn);
-                // Host sends initial state to new peer
-                setTimeout(() => sendInitialState(conn), 500);
             });
+            
+            state.peer.on('call', handleIncomingCall);
 
             state.peer.on('error', (err) => {
                 console.error(err);
@@ -498,22 +598,23 @@
             state.roomId = roomId;
             state.isHost = false;
 
-            // Create peer with random ID
             state.peer = new Peer(null, {
-                debug: 2,
+                debug: 1,
                 config: {
                     iceServers: [
                         { urls: 'stun:stun.l.google.com:19302' },
-                        { urls: 'stun:stun1.l.google.com:19302' }
+                        { urls: 'stun:stun1.l.google.com:19302' },
+                        { urls: 'stun:stun.services.mozilla.com' }
                     ]
                 }
             });
 
             state.peer.on('open', (id) => {
-                console.log('Joined as peer: ' + id);
                 const conn = state.peer.connect(roomId, { reliable: true });
                 setupConnection(conn);
             });
+            
+            state.peer.on('call', handleIncomingCall);
 
             state.peer.on('error', (err) => {
                 console.error(err);
@@ -533,12 +634,26 @@
                 dot.classList.add('online');
                 document.getElementById('toolbar-content').classList.add('collab-active');
                 if(state.isHost) document.getElementById('btn-share-link').classList.remove('hidden');
+                document.getElementById('btn-mic').classList.remove('hidden');
+                document.getElementById('btn-participants').classList.remove('hidden');
                 
-                // If not host, request sync? Host sends it automatically on connect.
+                // === HANDSHAKE LOGIC ===
+                if (state.isHost) {
+                    // Host waits for guest name
+                    // Host calls if mic is already on
+                    if (state.localStream && state.isMicOn) {
+                        const call = state.peer.call(conn.peer, state.localStream);
+                        handleOutgoingCall(call);
+                    }
+                    setTimeout(() => sendInitialState(conn), 500);
+                } else {
+                    // Guest sends name immediately
+                    conn.send({ type: 'join', name: state.username });
+                }
             });
 
             conn.on('data', (data) => {
-                handlePeerData(data);
+                handlePeerData(data, conn);
             });
 
             conn.on('close', () => {
@@ -546,58 +661,175 @@
                 if (state.connections.length === 0 && !state.isHost) {
                     txt.textContent = "Disconnected";
                     dot.classList.remove('online');
+                } else if (state.isHost) {
+                    // Remove participant
+                    state.participants = state.participants.filter(p => p.id !== conn.peer);
+                    updateParticipantsList(state.participants);
+                    broadcast({ type: 'update_participants', list: state.participants });
                 }
             });
         }
 
+        // --- Participant Logic ---
+        function toggleParticipants() {
+            const p = document.getElementById('participants-panel');
+            p.classList.toggle('hidden-panel');
+        }
+
+        function updateParticipantsList(list) {
+            state.participants = list;
+            const ul = document.getElementById('participants-list');
+            const count = document.getElementById('participant-count-badge');
+            ul.innerHTML = '';
+            count.textContent = list.length;
+
+            list.forEach(p => {
+                const li = document.createElement('li');
+                li.className = 'flex items-center gap-2 text-zinc-300 text-sm';
+                li.innerHTML = `
+                    <div class="w-6 h-6 rounded-full bg-zinc-700 flex items-center justify-center text-xs font-bold text-blue-400">
+                        ${p.name.charAt(0).toUpperCase()}
+                    </div>
+                    <span>${p.name}</span>
+                    ${p.isHost ? '<span class="text-[10px] bg-blue-900 text-blue-200 px-1 rounded">HOST</span>' : ''}
+                `;
+                ul.appendChild(li);
+            });
+        }
+
+        // --- Voice Chat Logic ---
+
+        async function toggleMic() {
+            const btn = document.getElementById('btn-mic');
+            const icon = btn.querySelector('i');
+
+            if (!state.localStream) {
+                // First click: Request Permission
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    state.localStream = stream;
+                    state.isMicOn = true;
+                    
+                    icon.className = 'fas fa-microphone';
+                    btn.classList.add('mic-active');
+                    
+                    if (state.isHost) {
+                        state.connections.forEach(conn => {
+                            const call = state.peer.call(conn.peer, stream);
+                            handleOutgoingCall(call);
+                        });
+                    } else {
+                        const call = state.peer.call(state.roomId, stream);
+                        handleOutgoingCall(call);
+                    }
+                    
+                } catch (err) {
+                    console.error("Microphone access denied:", err);
+                    alert("Could not access microphone. Please allow permissions.");
+                }
+            } else {
+                state.isMicOn = !state.isMicOn;
+                state.localStream.getAudioTracks().forEach(track => track.enabled = state.isMicOn);
+                
+                if (state.isMicOn) {
+                    icon.className = 'fas fa-microphone';
+                    btn.classList.add('mic-active');
+                    btn.classList.remove('mic-off');
+                } else {
+                    icon.className = 'fas fa-microphone-slash';
+                    btn.classList.remove('mic-active');
+                    btn.classList.add('mic-off');
+                }
+            }
+        }
+
+        function handleOutgoingCall(call) {
+            call.on('stream', (remoteStream) => playRemoteStream(remoteStream));
+            call.on('error', err => console.error("Call error:", err));
+        }
+
+        function handleIncomingCall(call) {
+            console.log("Incoming call from:", call.peer);
+            if (state.localStream) {
+                call.answer(state.localStream);
+            } else {
+                call.answer();
+            }
+            call.on('stream', (remoteStream) => playRemoteStream(remoteStream));
+        }
+
+        function playRemoteStream(stream) {
+            if (document.getElementById(`audio-${stream.id}`)) return;
+            const audio = document.createElement('audio');
+            audio.id = `audio-${stream.id}`;
+            audio.srcObject = stream;
+            audio.autoplay = true;
+            audio.playsInline = true; 
+            audioContainer.appendChild(audio);
+            
+            const playPromise = audio.play();
+            if (playPromise !== undefined) {
+                playPromise.catch(error => {
+                    const unlock = () => { audio.play(); document.removeEventListener('click', unlock); };
+                    document.addEventListener('click', unlock);
+                });
+            }
+        }
+
+        // --- Data Handling ---
+
         function sendInitialState(conn) {
-            // Send all page snapshots
             const pagesData = state.pages.map(p => p.canvas.toDataURL());
             conn.send({
                 type: 'init',
                 pages: pagesData,
-                activeIndex: state.activePageIndex
+                activeIndex: state.activePageIndex,
+                participants: state.participants // Send current list to new joiner
             });
         }
 
         function broadcast(data) {
-            state.connections.forEach(conn => {
-                if (conn.open) {
-                    conn.send(data);
-                }
-            });
+            state.connections.forEach(conn => { if (conn.open) conn.send(data); });
         }
 
-        function handlePeerData(data) {
-            if (data.type === 'init') {
-                // Rebuild pages from snapshot
-                // Clear existing
-                while(state.pages.length > 0) {
-                    const p = state.pages.pop();
-                    p.canvas.remove();
+        function handlePeerData(data, conn) {
+            if (data.type === 'join') {
+                // Host received join request
+                const newPeer = { id: conn.peer, name: data.name, isHost: false };
+                // Add to list if not exists
+                if (!state.participants.find(p => p.id === newPeer.id)) {
+                    state.participants.push(newPeer);
+                    updateParticipantsList(state.participants);
+                    broadcast({ type: 'update_participants', list: state.participants });
                 }
-                pagesStack.innerHTML = '';
-                state.activePageIndex = 0;
 
+            } else if (data.type === 'update_participants') {
+                // Guest received updated list
+                updateParticipantsList(data.list);
+
+            } else if (data.type === 'init') {
+                while(state.pages.length > 0) { const p = state.pages.pop(); p.canvas.remove(); }
+                pagesStack.innerHTML = '';
+                
                 data.pages.forEach((imgData, idx) => {
                     const { canvas, ctx } = createPageCanvas(idx);
                     pagesStack.appendChild(canvas);
                     state.pages.push({ id: `page-${idx}`, canvas, ctx, history: [imgData], historyStep: 0 });
-                    
                     const img = new Image();
-                    img.onload = () => {
-                        ctx.drawImage(img, 0, 0, canvas.width / (window.devicePixelRatio||1), canvas.height / (window.devicePixelRatio||1));
-                    };
+                    img.onload = () => ctx.drawImage(img, 0, 0, canvas.width / (window.devicePixelRatio||1), canvas.height / (window.devicePixelRatio||1));
                     img.src = imgData;
                 });
                 state.activePageIndex = data.activeIndex || 0;
                 updatePageIndicator();
                 setTimeout(() => state.pages[state.activePageIndex]?.canvas.scrollIntoView(), 100);
+                
+                // Handle initial participant list sync
+                if (data.participants) updateParticipantsList(data.participants);
 
             } else if (data.type === 'stroke') {
                 drawRemoteStroke(data);
             } else if (data.type === 'add_page') {
-                addPage(false); // Don't trigger save/broadcast loop
+                addPage(false); 
             } else if (data.type === 'page_change') {
                 state.activePageIndex = data.index;
                 updatePageIndicator();
@@ -606,11 +838,7 @@
         }
 
         function drawRemoteStroke(strokeData) {
-            // Ensure page exists
-            while (state.pages.length <= strokeData.pageIndex) {
-                addPage(false);
-            }
-            
+            while (state.pages.length <= strokeData.pageIndex) addPage(false);
             const page = state.pages[strokeData.pageIndex];
             const ctx = page.ctx;
             const points = strokeData.points;
@@ -632,14 +860,10 @@
                 const p1 = points[i-1];
                 const p2 = points[i];
                 const pressure = p2.p || 0.5;
-                
                 ctx.beginPath();
                 ctx.moveTo(p1.x, p1.y);
                 ctx.lineTo(p2.x, p2.y);
-                
-                if (strokeData.tool !== 'eraser') {
-                    ctx.lineWidth = Math.max(0.5, strokeData.baseSize * pressure * 2);
-                }
+                if (strokeData.tool !== 'eraser') ctx.lineWidth = Math.max(0.5, strokeData.baseSize * pressure * 2);
                 ctx.stroke();
             }
             ctx.restore();
@@ -650,7 +874,6 @@
             const input = document.getElementById('share-link-input');
             let url = window.location.href;
             if (state.roomId && !url.includes(state.roomId)) {
-                // If URL pushState failed, construct it manually for the user to see
                 const separator = url.includes('?') ? '&' : '?';
                 url = url.split('?')[0] + separator + 'room=' + state.roomId;
             }
@@ -658,17 +881,14 @@
             document.getElementById('share-modal').classList.remove('hidden');
         }
 
-        function closeShareModal() {
-            document.getElementById('share-modal').classList.add('hidden');
-        }
-
+        function closeShareModal() { document.getElementById('share-modal').classList.add('hidden'); }
         function copyShareLink() {
             const input = document.getElementById('share-link-input');
             input.select();
             document.execCommand('copy');
         }
 
-        // --- Core App Logic (Updated for P2P) ---
+        // --- Core App Logic ---
 
         function createPageCanvas(index) {
             const canvas = document.createElement('canvas');
@@ -677,12 +897,10 @@
             const dpr = window.devicePixelRatio || 1;
             const width = Math.max(1, window.innerWidth);
             const height = Math.max(1, window.innerHeight);
-            
             canvas.style.width = `${width}px`;
             canvas.style.height = `${height}px`;
             canvas.width = width * dpr;
             canvas.height = height * dpr;
-            
             const ctx = canvas.getContext('2d'); 
             ctx.scale(dpr, dpr);
             ctx.lineCap = 'round';
@@ -690,49 +908,27 @@
             return { canvas, ctx };
         }
 
-        function toggleToolbar() {
-            const wrapper = document.getElementById('toolbar-wrapper');
-            wrapper.classList.toggle('collapsed');
-        }
+        function toggleToolbar() { document.getElementById('toolbar-wrapper').classList.toggle('collapsed'); }
+        function toggleRightToolbar() { document.getElementById('right-toolbar-wrapper').classList.toggle('collapsed'); }
+        function togglePageControls() { document.getElementById('page-controls-wrapper').classList.toggle('collapsed'); }
 
-        function toggleRightToolbar() {
-            const wrapper = document.getElementById('right-toolbar-wrapper');
-            wrapper.classList.toggle('collapsed');
-        }
-
-        function togglePageControls() {
-            const wrapper = document.getElementById('page-controls-wrapper');
-            wrapper.classList.toggle('collapsed');
-        }
-
-        function triggerSave() {
-            clearTimeout(saveTimeout);
-            saveTimeout = setTimeout(saveToStorage, 1000); 
-        }
+        function triggerSave() { clearTimeout(saveTimeout); saveTimeout = setTimeout(saveToStorage, 1000); }
 
         function saveToStorage() {
-            // Disable local storage if in a room to avoid conflicts/overwrites
             if (state.roomId) return;
-
             try {
                 const data = {
                     activePageIndex: state.activePageIndex,
                     pages: state.pages.map(p => p.canvas.toDataURL())
                 };
                 localStorage.setItem('wb_data', JSON.stringify(data));
-            } catch (e) {
-                console.warn('Storage quota', e);
-            }
+            } catch (e) { console.warn('Storage quota', e); }
         }
 
         function loadFromStorage() {
             try {
                 const data = JSON.parse(localStorage.getItem('wb_data'));
-                if (!data || !data.pages || data.pages.length === 0) {
-                    addPage();
-                    document.getElementById('loading-overlay').classList.add('fade-out');
-                    return;
-                }
+                if (!data || !data.pages || data.pages.length === 0) { addPage(); document.getElementById('loading-overlay').classList.add('fade-out'); return; }
                 let loadedCount = 0;
                 data.pages.forEach((dataURL, index) => {
                     const { canvas, ctx } = createPageCanvas(index);
@@ -740,20 +936,13 @@
                     const pageObj = { id: `page-${index}`, canvas, ctx, history: [dataURL], historyStep: 0 };
                     state.pages.push(pageObj);
                     const img = new Image();
-                    img.onload = () => {
-                        ctx.drawImage(img, 0, 0, canvas.width / (window.devicePixelRatio||1), canvas.height / (window.devicePixelRatio||1));
-                        loadedCount++;
-                        if (loadedCount === data.pages.length) document.getElementById('loading-overlay').classList.add('fade-out');
-                    };
+                    img.onload = () => { ctx.drawImage(img, 0, 0, canvas.width / (window.devicePixelRatio||1), canvas.height / (window.devicePixelRatio||1)); loadedCount++; if (loadedCount === data.pages.length) document.getElementById('loading-overlay').classList.add('fade-out'); };
                     img.src = dataURL;
                 });
                 state.activePageIndex = Math.min(data.activePageIndex, state.pages.length - 1);
                 updatePageIndicator();
                 setTimeout(() => state.pages[state.activePageIndex]?.canvas.scrollIntoView(), 100);
-            } catch (e) {
-                addPage();
-                document.getElementById('loading-overlay').classList.add('fade-out');
-            }
+            } catch (e) { addPage(); document.getElementById('loading-overlay').classList.add('fade-out'); }
         }
 
         function addPage(shouldBroadcast = true) {
@@ -764,10 +953,7 @@
             state.pages.push({ id: `page-${index}`, canvas: canvas, ctx: ctx, history: [], historyStep: -1 });
             saveStateToPage(index);
             if (index > 0) setTimeout(() => canvas.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
-            if(shouldBroadcast && state.roomId) {
-                broadcast({ type: 'add_page' });
-                broadcast({ type: 'page_change', index: index });
-            }
+            if(shouldBroadcast && state.roomId) { broadcast({ type: 'add_page' }); broadcast({ type: 'page_change', index: index }); }
             if (!state.roomId) triggerSave();
         }
 
@@ -776,28 +962,18 @@
             if (state.pages.length <= 1) { clearCanvas(); return; }
             const indexToDelete = state.activePageIndex;
             const pageObj = state.pages[indexToDelete];
-            if (pageObj && pageObj.canvas) {
-                pageObj.canvas.remove();
-                state.pages.splice(indexToDelete, 1);
-                state.activePageIndex = Math.max(0, indexToDelete - 1);
-            }
+            if (pageObj && pageObj.canvas) { pageObj.canvas.remove(); state.pages.splice(indexToDelete, 1); state.activePageIndex = Math.max(0, indexToDelete - 1); }
             updatePageIndicator();
             triggerSave();
         }
 
         function scrollToNextPage() {
             const nextIndex = state.activePageIndex + 1;
-            if (nextIndex < state.pages.length) {
-                state.pages[nextIndex].canvas.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                if(state.roomId) broadcast({ type: 'page_change', index: nextIndex });
-            }
+            if (nextIndex < state.pages.length) { state.pages[nextIndex].canvas.scrollIntoView({ behavior: 'smooth', block: 'start' }); if(state.roomId) broadcast({ type: 'page_change', index: nextIndex }); }
         }
         function scrollToPrevPage() {
             const prevIndex = state.activePageIndex - 1;
-            if (prevIndex >= 0) {
-                state.pages[prevIndex].canvas.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                if(state.roomId) broadcast({ type: 'page_change', index: prevIndex });
-            }
+            if (prevIndex >= 0) { state.pages[prevIndex].canvas.scrollIntoView({ behavior: 'smooth', block: 'start' }); if(state.roomId) broadcast({ type: 'page_change', index: prevIndex }); }
         }
 
         function resize() {
@@ -807,55 +983,29 @@
             const height = Math.max(1, window.innerHeight);
             state.pages.forEach(page => {
                 let tempCanvas = null;
-                if (page.canvas.width > 0) {
-                    tempCanvas = document.createElement('canvas');
-                    tempCanvas.width = page.canvas.width;
-                    tempCanvas.height = page.canvas.height;
-                    tempCanvas.getContext('2d').drawImage(page.canvas, 0, 0);
-                }
-                page.canvas.style.width = `${width}px`;
-                page.canvas.style.height = `${height}px`;
-                page.canvas.width = width * dpr;
-                page.canvas.height = height * dpr;
-                page.ctx.scale(dpr, dpr);
-                page.ctx.lineCap = 'round';
-                page.ctx.lineJoin = 'round';
+                if (page.canvas.width > 0) { tempCanvas = document.createElement('canvas'); tempCanvas.width = page.canvas.width; tempCanvas.height = page.canvas.height; tempCanvas.getContext('2d').drawImage(page.canvas, 0, 0); }
+                page.canvas.style.width = `${width}px`; page.canvas.style.height = `${height}px`; page.canvas.width = width * dpr; page.canvas.height = height * dpr;
+                page.ctx.scale(dpr, dpr); page.ctx.lineCap = 'round'; page.ctx.lineJoin = 'round';
                 if (tempCanvas) page.ctx.drawImage(tempCanvas, 0, 0, width, height);
             });
-            baseCanvas.width = width * dpr;
-            baseCanvas.height = height * dpr;
+            baseCanvas.width = width * dpr; baseCanvas.height = height * dpr;
         }
         window.addEventListener('resize', resize);
 
         function setupObserver() {
             const observer = new IntersectionObserver((entries) => {
-                entries.forEach(entry => {
-                    if (entry.isIntersecting) {
-                        const idx = state.pages.findIndex(p => p.canvas === entry.target);
-                        if (idx !== -1) { 
-                            state.activePageIndex = idx; 
-                            updatePageIndicator(); 
-                        }
-                    }
-                });
+                entries.forEach(entry => { if (entry.isIntersecting) { const idx = state.pages.findIndex(p => p.canvas === entry.target); if (idx !== -1) { state.activePageIndex = idx; updatePageIndicator(); } } });
             }, { threshold: 0.5 });
             const originalAddPage = addPage;
             state.pages.forEach(p => observer.observe(p.canvas));
-            
             const existingAddPage = addPage;
             addPage = function(shouldBroadcast=true) {
                  if(state.selection.active) stampSelection();
-                 const index = state.pages.length;
-                 const { canvas, ctx } = createPageCanvas(index);
-                 pagesStack.appendChild(canvas);
+                 const index = state.pages.length; const { canvas, ctx } = createPageCanvas(index); pagesStack.appendChild(canvas);
                  state.pages.push({ id: `page-${index}`, canvas: canvas, ctx: ctx, history: [], historyStep: -1 });
-                 saveStateToPage(index);
-                 observer.observe(canvas);
+                 saveStateToPage(index); observer.observe(canvas);
                  if (index > 0) setTimeout(() => canvas.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
-                 if(shouldBroadcast && state.roomId) {
-                     broadcast({ type: 'add_page' });
-                     broadcast({ type: 'page_change', index: index });
-                 }
+                 if(shouldBroadcast && state.roomId) { broadcast({ type: 'add_page' }); broadcast({ type: 'page_change', index: index }); }
                  if(!state.roomId) triggerSave();
             }
         }
@@ -866,195 +1016,64 @@
             scrollView.addEventListener('pointerdown', handlePointerDown);
             window.addEventListener('pointermove', handlePointerMove);
             window.addEventListener('pointerup', handlePointerUp);
-
-            gestureZone.addEventListener('pointerdown', (e) => {
-                e.preventDefault(); 
-                e.stopPropagation();
-                gestureZone.setPointerCapture(e.pointerId); 
-                state.mode = 'GESTURE_SWIPE';
-                state.strokeStartY = e.clientY;
-                state.strokeStartTime = Date.now();
-            });
+            gestureZone.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); gestureZone.setPointerCapture(e.pointerId); state.mode = 'GESTURE_SWIPE'; state.strokeStartY = e.clientY; state.strokeStartTime = Date.now(); });
         }
 
         function getEventInfo(e) {
             let targetCanvas = e.target;
-            if (targetCanvas.closest('#selection-ui')) {
-                if (state.selection.pageIndex !== -1) targetCanvas = state.pages[state.selection.pageIndex].canvas;
-            }
+            if (targetCanvas.closest('#selection-ui')) { if (state.selection.pageIndex !== -1) targetCanvas = state.pages[state.selection.pageIndex].canvas; }
             if (!targetCanvas || targetCanvas.tagName !== 'CANVAS') return null;
-            const pageIndex = state.pages.findIndex(p => p.canvas === targetCanvas);
-            if (pageIndex === -1) return null;
+            const pageIndex = state.pages.findIndex(p => p.canvas === targetCanvas); if (pageIndex === -1) return null;
             const rect = targetCanvas.getBoundingClientRect();
             return { pageIndex, x: e.clientX - rect.left, y: e.clientY - rect.top, pressure: e.pressure, rect: rect };
         }
 
         function handlePointerDown(e) {
-            if (state.isSpaceBarDown) {
-                state.mode = 'PANNING';
-                state.lastX = e.clientX; state.lastY = e.clientY;
-                state.startScrollTop = scrollView.scrollTop;
-                scrollView.classList.add('cursor-panning');
-                return;
-            }
+            if (state.isSpaceBarDown) { state.mode = 'PANNING'; state.lastX = e.clientX; state.lastY = e.clientY; state.startScrollTop = scrollView.scrollTop; scrollView.classList.add('cursor-panning'); return; }
             const info = getEventInfo(e);
-            if (e.button === 2 || e.button === 5) {
-                state.activePageIndex = info ? info.pageIndex : state.activePageIndex; 
-                state.mode = 'LASSO_WAIT';
-                state.menuX = e.clientX; state.menuY = e.clientY;
-                if(info) {
-                    const page = state.pages[info.pageIndex];
-                    if(page) state.lassoSnapshot = page.ctx.getImageData(0, 0, page.canvas.width, page.canvas.height);
-                    state.lassoPath = [{x: info.x, y: info.y}];
-                    state.lastX = info.x; state.lastY = info.y;
-                }
-                hideQuickWheel();
-                return;
-            }
+            if (e.button === 2 || e.button === 5) { state.activePageIndex = info ? info.pageIndex : state.activePageIndex; state.mode = 'LASSO_WAIT'; state.menuX = e.clientX; state.menuY = e.clientY; if(info) { const page = state.pages[info.pageIndex]; if(page) state.lassoSnapshot = page.ctx.getImageData(0, 0, page.canvas.width, page.canvas.height); state.lassoPath = [{x: info.x, y: info.y}]; state.lastX = info.x; state.lastY = info.y; } hideQuickWheel(); return; }
             if (!info) return;
-            state.activePageIndex = info.pageIndex;
-            updatePageIndicator();
-
-            if (state.selection.active && state.selection.pageIndex === info.pageIndex) {
-                const s = state.selection;
-                if (info.x >= s.x && info.x <= s.x + s.w && info.y >= s.y && info.y <= s.y + s.h) {
-                    if (e.buttons === 1) {
-                        liftSelection();
-                        state.mode = 'MOVING_SELECTION';
-                        state.lastX = info.x; state.lastY = info.y;
-                        renderSelectionMove();
-                        return;
-                    }
-                } else stampSelection();
-            } else if (state.selection.active) stampSelection();
-
-            if (e.buttons === 1) {
-                state.mode = 'DRAWING';
-                state.lastX = info.x; state.lastY = info.y;
-                state.strokeStartX = e.clientX;
-                state.strokeStartY = e.clientY;
-                state.strokeStartTime = Date.now();
-                state.currentStrokePoints = [{ x: info.x, y: info.y, p: info.pressure || 0.5 }];
-                draw(e, info.pageIndex);
-            } else if (e.button === 1) { e.preventDefault(); toggleEraser(); }
+            state.activePageIndex = info.pageIndex; updatePageIndicator();
+            if (state.selection.active && state.selection.pageIndex === info.pageIndex) { const s = state.selection; if (info.x >= s.x && info.x <= s.x + s.w && info.y >= s.y && info.y <= s.y + s.h) { if (e.buttons === 1) { liftSelection(); state.mode = 'MOVING_SELECTION'; state.lastX = info.x; state.lastY = info.y; renderSelectionMove(); return; } } else stampSelection(); } else if (state.selection.active) stampSelection();
+            if (e.buttons === 1) { state.mode = 'DRAWING'; state.lastX = info.x; state.lastY = info.y; state.strokeStartX = e.clientX; state.strokeStartY = e.clientY; state.strokeStartTime = Date.now(); state.currentStrokePoints = [{ x: info.x, y: info.y, p: info.pressure || 0.5 }]; draw(e, info.pageIndex); } else if (e.button === 1) { e.preventDefault(); toggleEraser(); }
         }
 
         function handlePointerMove(e) {
-            if (state.mode === 'PANNING') {
-                scrollView.scrollTop = state.startScrollTop - (e.clientY - state.lastY);
-                return;
-            }
+            if (state.mode === 'PANNING') { scrollView.scrollTop = state.startScrollTop - (e.clientY - state.lastY); return; }
             const info = getEventInfo(e);
-            
-            if (state.mode === 'MOVING_SELECTION') {
-                if (!info || info.pageIndex !== state.selection.pageIndex) return; 
-                state.selection.x += info.x - state.lastX;
-                state.selection.y += info.y - state.lastY;
-                state.lastX = info.x; state.lastY = info.y;
-                updateSelectionVisuals();
-                renderSelectionMove();
-            } else if (state.mode === 'LASSO_WAIT') {
-                if (!info) return;
-                if (Math.hypot(info.x - state.lastX, info.y - state.lastY) > 5) state.mode = 'LASSOING';
-            }
-            if (state.mode === 'LASSOING' && info && info.pageIndex === state.activePageIndex) {
-                const page = state.pages[state.activePageIndex];
-                if(state.lassoSnapshot) page.ctx.putImageData(state.lassoSnapshot, 0, 0);
-                state.lassoPath.push({x: info.x, y: info.y});
-                redrawLassoPath(state.activePageIndex);
-            } else if (state.mode === 'DRAWING' && info && info.pageIndex === state.activePageIndex) draw(e, info.pageIndex);
+            if (state.mode === 'MOVING_SELECTION') { if (!info || info.pageIndex !== state.selection.pageIndex) return; state.selection.x += info.x - state.lastX; state.selection.y += info.y - state.lastY; state.lastX = info.x; state.lastY = info.y; updateSelectionVisuals(); renderSelectionMove(); } 
+            else if (state.mode === 'LASSO_WAIT') { if (!info) return; if (Math.hypot(info.x - state.lastX, info.y - state.lastY) > 5) state.mode = 'LASSOING'; }
+            if (state.mode === 'LASSOING' && info && info.pageIndex === state.activePageIndex) { const page = state.pages[state.activePageIndex]; if(state.lassoSnapshot) page.ctx.putImageData(state.lassoSnapshot, 0, 0); state.lassoPath.push({x: info.x, y: info.y}); redrawLassoPath(state.activePageIndex); } 
+            else if (state.mode === 'DRAWING' && info && info.pageIndex === state.activePageIndex) draw(e, info.pageIndex);
         }
 
         function handlePointerUp(e) {
-            if (state.mode === 'PANNING') {
-                state.mode = 'IDLE'; scrollView.classList.remove('cursor-panning');
-            } else if (state.mode === 'LASSO_WAIT') {
-                state.mode = 'IDLE'; state.lassoSnapshot = null; showQuickWheel(state.menuX, state.menuY);
-            } else if (state.mode === 'LASSOING') {
-                finishLassoSelection(); state.mode = 'IDLE';
-            } else if (state.mode === 'MOVING_SELECTION') {
-                state.mode = 'SELECTION_ACTIVE';
-            } else if (state.mode === 'GESTURE_SWIPE') {
-                const dy = e.clientY - state.strokeStartY;
-                const duration = Date.now() - state.strokeStartTime;
-                if (duration < 800 && Math.abs(dy) > 50) {
-                    if (dy < 0) { 
-                         if (state.activePageIndex === state.pages.length - 1) addPage();
-                         else scrollToNextPage();
-                    } else { 
-                         scrollToPrevPage();
-                    }
-                }
-                state.mode = 'IDLE';
-                if(gestureZone.hasPointerCapture(e.pointerId)) gestureZone.releasePointerCapture(e.pointerId);
-
-            } else if (state.mode === 'DRAWING') {
-                state.mode = 'IDLE';
-                const page = state.pages[state.activePageIndex];
-                if (page) { 
-                    page.ctx.beginPath(); 
-                    saveStateToPage(state.activePageIndex); 
-                    
-                    // Broadcast Stroke
-                    if (state.roomId && state.currentStrokePoints.length > 1) {
-                        broadcast({
-                            type: 'stroke',
-                            points: state.currentStrokePoints,
-                            color: state.color,
-                            baseSize: state.baseSize,
-                            tool: state.tool,
-                            pageIndex: state.activePageIndex
-                        });
-                    } else {
-                        triggerSave();
-                    }
-                    state.currentStrokePoints = [];
-                }
-            }
+            if (state.mode === 'PANNING') { state.mode = 'IDLE'; scrollView.classList.remove('cursor-panning'); } 
+            else if (state.mode === 'LASSO_WAIT') { state.mode = 'IDLE'; state.lassoSnapshot = null; showQuickWheel(state.menuX, state.menuY); } 
+            else if (state.mode === 'LASSOING') { finishLassoSelection(); state.mode = 'IDLE'; } 
+            else if (state.mode === 'MOVING_SELECTION') { state.mode = 'SELECTION_ACTIVE'; } 
+            else if (state.mode === 'GESTURE_SWIPE') { const dy = e.clientY - state.strokeStartY; const duration = Date.now() - state.strokeStartTime; if (duration < 800 && Math.abs(dy) > 50) { if (dy < 0) { if (state.activePageIndex === state.pages.length - 1) addPage(); else scrollToNextPage(); } else { scrollToPrevPage(); } } state.mode = 'IDLE'; if(gestureZone.hasPointerCapture(e.pointerId)) gestureZone.releasePointerCapture(e.pointerId); } 
+            else if (state.mode === 'DRAWING') { state.mode = 'IDLE'; const page = state.pages[state.activePageIndex]; if (page) { page.ctx.beginPath(); saveStateToPage(state.activePageIndex); if (state.roomId && state.currentStrokePoints.length > 1) { broadcast({ type: 'stroke', points: state.currentStrokePoints, color: state.color, baseSize: state.baseSize, tool: state.tool, pageIndex: state.activePageIndex }); } else { triggerSave(); } state.currentStrokePoints = []; } }
         }
 
         function draw(e, pageIndex) {
-            const page = state.pages[pageIndex];
-            if (!page) return;
+            const page = state.pages[pageIndex]; if (!page) return;
             const rect = page.canvas.getBoundingClientRect();
             const events = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
             events.forEach(event => {
-                const x = event.clientX - rect.left;
-                const y = event.clientY - rect.top;
+                const x = event.clientX - rect.left; const y = event.clientY - rect.top;
                 const pressure = (event.pointerType === 'pen' && state.pressureEnabled) ? event.pressure : 0.5;
-                
-                if (state.mode === 'DRAWING') {
-                    state.currentStrokePoints.push({ x: Math.round(x), y: Math.round(y), p: parseFloat(pressure.toFixed(2)) });
-                }
-
-                page.ctx.beginPath();
-                page.ctx.moveTo(state.lastX, state.lastY);
-                page.ctx.lineTo(x, y);
-                if (state.tool === 'eraser') {
-                    page.ctx.globalCompositeOperation = 'destination-out';
-                    page.ctx.lineWidth = state.baseSize * 3;
-                } else {
-                    page.ctx.globalCompositeOperation = 'source-over';
-                    page.ctx.strokeStyle = state.color;
-                    page.ctx.lineWidth = Math.max(0.5, event.pointerType === 'pen' ? (state.baseSize * pressure * 2) : state.baseSize);
-                }
-                page.ctx.stroke();
-                state.lastX = x; state.lastY = y;
+                if (state.mode === 'DRAWING') { state.currentStrokePoints.push({ x: Math.round(x), y: Math.round(y), p: parseFloat(pressure.toFixed(2)) }); }
+                page.ctx.beginPath(); page.ctx.moveTo(state.lastX, state.lastY); page.ctx.lineTo(x, y);
+                if (state.tool === 'eraser') { page.ctx.globalCompositeOperation = 'destination-out'; page.ctx.lineWidth = state.baseSize * 3; } 
+                else { page.ctx.globalCompositeOperation = 'source-over'; page.ctx.strokeStyle = state.color; page.ctx.lineWidth = Math.max(0.5, event.pointerType === 'pen' ? (state.baseSize * pressure * 2) : state.baseSize); }
+                page.ctx.stroke(); state.lastX = x; state.lastY = y;
             });
         }
 
         function redrawLassoPath(pageIndex) {
-            const page = state.pages[pageIndex];
-            if(!page || state.lassoPath.length < 2) return;
-            page.ctx.save();
-            page.ctx.globalCompositeOperation = 'source-over';
-            page.ctx.strokeStyle = '#3b82f6';
-            page.ctx.lineWidth = 1;
-            page.ctx.setLineDash([5, 5]);
-            page.ctx.beginPath();
-            state.lassoPath.forEach((p, i) => { i===0 ? page.ctx.moveTo(p.x, p.y) : page.ctx.lineTo(p.x, p.y); });
-            page.ctx.stroke();
-            page.ctx.restore();
+            const page = state.pages[pageIndex]; if(!page || state.lassoPath.length < 2) return;
+            page.ctx.save(); page.ctx.globalCompositeOperation = 'source-over'; page.ctx.strokeStyle = '#3b82f6'; page.ctx.lineWidth = 1; page.ctx.setLineDash([5, 5]); page.ctx.beginPath(); state.lassoPath.forEach((p, i) => { i===0 ? page.ctx.moveTo(p.x, p.y) : page.ctx.lineTo(p.x, p.y); }); page.ctx.stroke(); page.ctx.restore();
         }
 
         function finishLassoSelection() { /* ... unchanged ... */
