@@ -16,7 +16,7 @@
         body {
             margin: 0;
             overflow: hidden; 
-            background-color: #18181b; 
+            background-color: #ffffff; /* Changed to White */
             touch-action: none; 
             user-select: none;
             font-family: 'Inter', sans-serif;
@@ -32,7 +32,7 @@
             overflow-y: auto;
             overflow-x: hidden;
             scroll-behavior: smooth;
-            -webkit-overflow-scrolling: touch; /* smooth scrolling iOS */
+            -webkit-overflow-scrolling: touch;
         }
 
         #pages-stack {
@@ -41,20 +41,19 @@
             align-items: center;
             width: 100%;
             min-height: 100%;
-            padding-bottom: 50vh; 
-            padding-top: 20px;
+            padding-bottom: 20vh; /* Reduced padding for mobile */
+            padding-top: 10px;
         }
 
         .page-canvas {
             display: block;
             touch-action: none;
-            margin-bottom: 30px; 
-            background-color: transparent;
-            border-bottom: 1px dashed #3f3f46;
-            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+            margin-bottom: 20px; 
+            background-color: #ffffff;
+            border-bottom: 1px dashed #e4e4e7; /* Light gray dashed */
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); /* Softer shadow */
         }
         
-        /* When Pan tool is active, let events pass through to scroll container */
         .pan-active .page-canvas {
             pointer-events: none !important;
         }
@@ -64,16 +63,14 @@
         }
 
         .grid-bg {
-            background-image: radial-gradient(#3f3f46 1px, transparent 1px);
+            background-image: radial-gradient(#d4d4d8 1px, transparent 1px); /* Lighter dots */
             background-size: 24px 24px;
             background-attachment: local; 
         }
 
-        .floating-ui {
-            position: fixed; 
-            z-index: 50;
-            backdrop-filter: blur(8px);
-            transition: opacity 0.2s;
+        /* Input Range Styling for Light Mode */
+        input[type="range"] {
+            background-color: #e4e4e7 !important;
         }
 
         input[type="color"] {
@@ -85,15 +82,17 @@
             padding: 0;
             overflow: hidden;
             cursor: pointer;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
         }
         input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
         input[type="color"]::-webkit-color-swatch {
             border: none;
             border-radius: 50%;
-            border: 2px solid rgba(255,255,255,0.2);
+            border: 2px solid rgba(0,0,0,0.05);
         }
 
-        .tool-btn { transition: all 0.2s ease; }
+        .tool-btn { transition: all 0.2s ease; color: #52525b; }
+        .tool-btn:hover { background-color: #f4f4f5; color: #18181b; }
         .tool-btn.active {
             background-color: #3b82f6; 
             color: white;
@@ -107,20 +106,20 @@
             width: 40px;
             height: 40px;
             border-radius: 50%;
-            background: #27272a;
-            border: 1px solid #3f3f46;
-            color: #d4d4d8;
+            background: #ffffff;
+            border: 1px solid #e4e4e7;
+            color: #52525b;
             display: flex;
             align-items: center;
             justify-content: center;
             cursor: pointer;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
             transition: transform 0.1s, background 0.1s;
         }
         .wheel-btn:hover {
             transform: scale(1.1);
-            background: #3f3f46;
-            color: white;
+            background: #f4f4f5;
+            color: #18181b;
         }
         .wheel-center {
             width: 50px;
@@ -128,12 +127,13 @@
             background: #3b82f6;
             color: white;
             z-index: 20;
+            border: none;
         }
         
         #selection-ui {
             pointer-events: none;
-            border: 1px dashed rgba(59, 130, 246, 0.8);
-            background: rgba(59, 130, 246, 0.05);
+            border: 1px dashed #3b82f6;
+            background: rgba(59, 130, 246, 0.1);
             display: none;
             position: absolute; 
             z-index: 40;
@@ -158,9 +158,9 @@
         #toolbar-wrapper {
             transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             width: 100%;
-            pointer-events: none; /* Let clicks pass through empty space */
+            pointer-events: none;
         }
-        #toolbar-wrapper > * { pointer-events: auto; } /* Re-enable clicks on children */
+        #toolbar-wrapper > * { pointer-events: auto; }
         
         #toolbar-wrapper.collapsed {
             transform: translate(-50%, -100%);
@@ -168,7 +168,10 @@
         #toolbar-wrapper.collapsed #toggle-arrow {
             transform: rotate(180deg);
             top: 100%; 
-            background-color: rgba(39, 39, 42, 0.9);
+            background-color: #ffffff;
+            border-color: #e4e4e7;
+            color: #71717a;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
         }
         #toolbar-content {
             transition: opacity 0.2s;
@@ -187,7 +190,9 @@
         }
         #right-toolbar-wrapper.collapsed #right-toggle-arrow {
             transform: translateY(-50%) rotate(180deg);
-            background-color: rgba(39, 39, 42, 0.9);
+            background-color: #ffffff;
+            border-color: #e4e4e7;
+            color: #71717a;
         }
         #right-toolbar-content {
             transition: opacity 0.2s;
@@ -206,7 +211,9 @@
         }
         #page-controls-wrapper.collapsed #page-toggle-arrow {
             transform: translateY(-50%) rotate(180deg);
-            background-color: rgba(39, 39, 42, 0.9);
+            background-color: #ffffff;
+            border-color: #e4e4e7;
+            color: #71717a;
         }
         #page-controls-content {
             transition: opacity 0.2s;
@@ -219,9 +226,9 @@
         /* Loading indicator */
         #loading-overlay {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: #18181b; z-index: 100;
+            background: #ffffff; z-index: 100;
             display: flex; align-items: center; justify-content: center;
-            color: #71717a; font-size: 1.2rem;
+            color: #52525b; font-size: 1.2rem;
             transition: opacity 0.5s;
         }
         #loading-overlay.fade-out { opacity: 0; pointer-events: none; }
@@ -230,21 +237,27 @@
         #gesture-zone {
             touch-action: none;
         }
+        #gesture-zone div {
+            background-color: rgba(0,0,0,0.1);
+        }
+        #gesture-zone:hover div {
+            background-color: rgba(0,0,0,0.2);
+        }
 
         /* Collaboration Indicator */
         .collab-active {
-            box-shadow: 0 0 15px rgba(59, 130, 246, 0.5);
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
             border-color: #3b82f6 !important;
         }
         .collab-status-dot {
             width: 8px; height: 8px; border-radius: 50%; background: #ef4444;
             display: inline-block; margin-right: 6px;
         }
-        .collab-status-dot.online { background: #3b82f6; box-shadow: 0 0 8px #3b82f6; }
+        .collab-status-dot.online { background: #3b82f6; box-shadow: 0 0 4px #3b82f6; }
         
         /* Mic Pulse */
         @keyframes pulse-green {
-            0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+            0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); }
             70% { box-shadow: 0 0 0 10px rgba(16, 185, 129, 0); }
             100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
         }
@@ -259,6 +272,8 @@
         /* Participants Panel */
         #participants-panel {
             transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            background-color: rgba(255, 255, 255, 0.95);
+            border-color: #e4e4e7;
         }
         #participants-panel.hidden-panel {
             transform: translateY(-20px);
@@ -274,35 +289,29 @@
                 max-width: 98vw;
                 height: 56px;
                 border-radius: 16px;
-                /* Allow horizontal scroll on very small screens if needed */
                 overflow-x: auto;
                 -webkit-overflow-scrolling: touch;
             }
 
-            /* Shrink tool buttons */
             .tool-btn, #btn-share-link, #btn-mic, #btn-participants, .undo-redo-btn {
-                width: 2rem !important; /* 32px */
+                width: 2rem !important; 
                 height: 2rem !important;
-                font-size: 0.875rem; /* 14px */
+                font-size: 0.875rem; 
             }
 
-            /* Compact Color Picker */
             input[type="color"] {
                 width: 24px;
                 height: 24px;
             }
 
-            /* Hide labels and less critical info */
             #collab-text, #sizeValue, #size-label-text {
                 display: none;
             }
 
-            /* Adjust slider container */
             #size-container {
                 width: 60px !important;
             }
 
-            /* Reposition Bottom Controls */
             #page-controls-wrapper {
                 bottom: 1rem;
                 left: 0.5rem;
@@ -319,14 +328,12 @@
                 z-index: 55;
             }
 
-            /* Floating panel adjustments */
             #participants-panel {
                 width: 90vw;
                 right: 5vw;
                 top: 80px;
             }
 
-            /* Make wheel smaller on mobile */
             #quick-wheel {
                 transform: scale(0.8) translate(-60%, -60%);
             }
@@ -340,41 +347,41 @@
 
     <!-- Text Result Modal -->
     <div id="text-result-modal" class="hidden fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm">
-        <div class="bg-zinc-800 border border-zinc-700 rounded-2xl p-6 w-96 shadow-2xl relative animate-[fadeIn_0.2s_ease-out] mx-4">
-            <button onclick="closeTextModal()" class="absolute top-4 right-4 text-zinc-400 hover:text-white"><i class="fas fa-times"></i></button>
-            <h2 class="text-xl text-white font-semibold mb-4"><i class="fas fa-align-left mr-2 text-emerald-500"></i>Recognized Text</h2>
-            <div id="text-result-content" class="bg-zinc-900/50 p-4 rounded-lg text-zinc-200 min-h-[100px] max-h-[300px] overflow-y-auto whitespace-pre-wrap font-mono text-sm border border-zinc-700/50"></div>
+        <div class="bg-white border border-zinc-200 rounded-2xl p-6 w-96 shadow-2xl relative animate-[fadeIn_0.2s_ease-out] mx-4">
+            <button onclick="closeTextModal()" class="absolute top-4 right-4 text-zinc-400 hover:text-zinc-600"><i class="fas fa-times"></i></button>
+            <h2 class="text-xl text-zinc-800 font-semibold mb-4"><i class="fas fa-align-left mr-2 text-emerald-500"></i>Recognized Text</h2>
+            <div id="text-result-content" class="bg-zinc-50 p-4 rounded-lg text-zinc-700 min-h-[100px] max-h-[300px] overflow-y-auto whitespace-pre-wrap font-mono text-sm border border-zinc-200"></div>
             <div class="mt-4 flex justify-end gap-2">
-                <button onclick="closeTextModal()" class="px-4 py-2 text-zinc-400 hover:text-white text-sm font-medium">Close</button>
+                <button onclick="closeTextModal()" class="px-4 py-2 text-zinc-500 hover:text-zinc-700 text-sm font-medium">Close</button>
                 <button onclick="copyTextResult()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-medium shadow-lg transition-colors"><i class="fas fa-copy mr-2"></i>Copy Text</button>
             </div>
         </div>
     </div>
 
     <!-- Name Entry Modal -->
-    <div id="name-modal" class="hidden fixed inset-0 z-[70] flex items-center justify-center bg-black/80 backdrop-blur-md">
-        <div class="bg-zinc-900 border border-zinc-700 rounded-xl p-6 w-full max-w-sm shadow-2xl transform scale-100 transition-all mx-4">
-            <h3 class="text-lg font-bold text-white mb-2"><i class="fas fa-user-tag text-blue-500 mr-2"></i>Join Session</h3>
-            <p class="text-zinc-400 text-sm mb-4">Please enter your name to continue.</p>
-            <input type="text" id="username-input" class="w-full bg-zinc-800 border border-zinc-600 text-white rounded-lg px-4 py-2 mb-4 outline-none focus:border-blue-500" placeholder="Your Name">
+    <div id="name-modal" class="hidden fixed inset-0 z-[70] flex items-center justify-center bg-black/60 backdrop-blur-md">
+        <div class="bg-white border border-zinc-200 rounded-xl p-6 w-full max-w-sm shadow-2xl transform scale-100 transition-all mx-4">
+            <h3 class="text-lg font-bold text-zinc-800 mb-2"><i class="fas fa-user-tag text-blue-500 mr-2"></i>Join Session</h3>
+            <p class="text-zinc-500 text-sm mb-4">Please enter your name to continue.</p>
+            <input type="text" id="username-input" class="w-full bg-zinc-50 border border-zinc-300 text-zinc-800 rounded-lg px-4 py-2 mb-4 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" placeholder="Your Name">
             <button onclick="submitName()" class="w-full px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-medium transition-colors">Continue</button>
         </div>
     </div>
 
     <!-- Share Session Modal -->
     <div id="share-modal" class="hidden fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm">
-        <div class="bg-zinc-900 border border-zinc-700 rounded-xl p-6 w-full max-w-md shadow-2xl transform scale-100 transition-all mx-4">
+        <div class="bg-white border border-zinc-200 rounded-xl p-6 w-full max-w-md shadow-2xl transform scale-100 transition-all mx-4">
             <div class="flex justify-between items-center mb-4">
-                <h3 class="text-lg font-bold text-white"><i class="fas fa-broadcast-tower text-blue-500 mr-2"></i>Hosting Session</h3>
-                <button onclick="closeShareModal()" class="text-zinc-400 hover:text-white"><i class="fas fa-times"></i></button>
+                <h3 class="text-lg font-bold text-zinc-800"><i class="fas fa-broadcast-tower text-blue-500 mr-2"></i>Hosting Session</h3>
+                <button onclick="closeShareModal()" class="text-zinc-400 hover:text-zinc-600"><i class="fas fa-times"></i></button>
             </div>
-            <p class="text-zinc-400 text-sm mb-4">Share this link to invite others. Your Device acts as the server.</p>
-            <div class="flex items-center gap-2 bg-zinc-800 p-2 rounded-lg border border-zinc-700 mb-4">
-                <input type="text" id="share-link-input" readonly class="bg-transparent text-zinc-200 text-sm w-full outline-none px-2 font-mono">
-                <button onclick="copyShareLink()" class="p-2 bg-zinc-700 hover:bg-zinc-600 rounded text-white transition-colors" title="Copy Link"><i class="fas fa-copy"></i></button>
+            <p class="text-zinc-500 text-sm mb-4">Share this link to invite others. Your Device acts as the server.</p>
+            <div class="flex items-center gap-2 bg-zinc-50 p-2 rounded-lg border border-zinc-200 mb-4">
+                <input type="text" id="share-link-input" readonly class="bg-transparent text-zinc-600 text-sm w-full outline-none px-2 font-mono">
+                <button onclick="copyShareLink()" class="p-2 bg-zinc-200 hover:bg-zinc-300 rounded text-zinc-700 transition-colors" title="Copy Link"><i class="fas fa-copy"></i></button>
             </div>
             <div class="flex justify-between items-center mt-4">
-                <div class="text-xs text-zinc-500" id="peer-status-msg">Waiting for connections...</div>
+                <div class="text-xs text-zinc-400" id="peer-status-msg">Waiting for connections...</div>
                 <button onclick="closeShareModal()" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-medium">Done</button>
             </div>
         </div>
@@ -382,8 +389,8 @@
 
     <!-- Dedicated Gesture Zone for Page Navigation (LEFT SIDE) - Hidden on small mobile screens to prevent accidental swipes -->
     <div id="gesture-zone" class="fixed top-0 left-0 w-8 md:w-16 h-full z-40 flex flex-col justify-center items-center group hover:bg-white/5 transition-colors cursor-pointer hidden sm:flex" title="Swipe vertically here to change/add pages">
-        <div class="h-16 w-1 rounded-full bg-zinc-700/50 group-hover:bg-zinc-500/80 transition-colors mb-2"></div>
-        <div class="h-16 w-1 rounded-full bg-zinc-700/50 group-hover:bg-zinc-500/80 transition-colors"></div>
+        <div class="h-16 w-1 rounded-full bg-zinc-400/30 group-hover:bg-zinc-400/60 transition-colors mb-2"></div>
+        <div class="h-16 w-1 rounded-full bg-zinc-400/30 group-hover:bg-zinc-400/60 transition-colors"></div>
     </div>
 
     <div id="scroll-view" class="grid-bg">
@@ -406,16 +413,16 @@
         <button onclick="undo()" class="wheel-btn absolute left-0 top-1/2 transform -translate-y-1/2"><i class="fas fa-undo"></i></button>
         <button onclick="redo()" class="wheel-btn absolute right-0 top-1/2 transform -translate-y-1/2"><i class="fas fa-redo"></i></button>
         <button onclick="setQuickColor('#3b82f6')" class="wheel-btn absolute top-[15%] right-[15%]" style="background: #3b82f6; border-color: transparent;"></button>
-        <button onclick="setQuickColor('#ffffff')" class="wheel-btn absolute top-[15%] left-[15%]" style="background: #ffffff; border-color: transparent;"></button>
+        <button onclick="setQuickColor('#000000')" class="wheel-btn absolute top-[15%] left-[15%]" style="background: #000000; border-color: transparent;"></button>
         <button onclick="setQuickColor('#ef4444')" class="wheel-btn absolute bottom-[15%] right-[15%]" style="background: #ef4444; border-color: transparent;"></button>
         <button onclick="setTool('eraser')" class="wheel-btn absolute bottom-[15%] left-[15%]" title="Eraser"><i class="fas fa-eraser"></i></button>
     </div>
 
     <!-- Participants Panel (Floating Top Right) -->
-    <div id="participants-panel" class="hidden-panel fixed top-20 right-6 z-40 bg-zinc-800/90 border border-zinc-700 rounded-xl p-4 w-64 shadow-xl backdrop-blur-md">
-        <div class="flex justify-between items-center mb-3 border-b border-zinc-700 pb-2">
-            <h4 class="text-zinc-200 font-semibold text-sm">Participants</h4>
-            <span id="participant-count-badge" class="bg-zinc-700 text-zinc-300 text-xs px-2 py-0.5 rounded-full">1</span>
+    <div id="participants-panel" class="hidden-panel fixed top-20 right-6 z-40 bg-white/90 border border-zinc-200 rounded-xl p-4 w-64 shadow-xl backdrop-blur-md">
+        <div class="flex justify-between items-center mb-3 border-b border-zinc-100 pb-2">
+            <h4 class="text-zinc-700 font-semibold text-sm">Participants</h4>
+            <span id="participant-count-badge" class="bg-zinc-200 text-zinc-700 text-xs px-2 py-0.5 rounded-full">1</span>
         </div>
         <ul id="participants-list" class="space-y-2 max-h-48 overflow-y-auto pr-1">
             <!-- List populated via JS -->
@@ -424,64 +431,64 @@
 
     <!-- Top Toolbar Wrapper with Toggle -->
     <div id="toolbar-wrapper" class="fixed top-0 left-1/2 transform -translate-x-1/2 z-50 flex flex-col items-center pt-4">
-        <div id="toolbar-content" class="bg-zinc-800/80 border border-zinc-700 rounded-full shadow-xl px-4 py-2 flex items-center gap-2 md:gap-4 backdrop-blur-md transition-all">
+        <div id="toolbar-content" class="bg-white/90 border border-zinc-200 rounded-full shadow-lg px-4 py-2 flex items-center gap-2 md:gap-4 backdrop-blur-md transition-all">
             <!-- Collaboration Button -->
-            <button onclick="handleCollabButton()" id="btn-collab" class="flex items-center px-2 py-1.5 md:px-3 rounded-full bg-zinc-700 hover:bg-zinc-600 text-zinc-300 text-xs font-medium transition-colors border border-transparent">
+            <button onclick="handleCollabButton()" id="btn-collab" class="flex items-center px-2 py-1.5 md:px-3 rounded-full bg-zinc-100 hover:bg-zinc-200 text-zinc-700 text-xs font-medium transition-colors border border-transparent">
                 <span id="collab-dot" class="collab-status-dot"></span>
                 <span id="collab-text" class="hidden md:inline">Host</span>
                 <i class="fas fa-wifi md:hidden"></i>
             </button>
             
             <!-- Participants Toggle -->
-            <button onclick="toggleParticipants()" id="btn-participants" class="hidden w-8 h-8 rounded-full text-zinc-300 hover:text-white hover:bg-zinc-700 flex items-center justify-center transition-colors" title="View Participants">
+            <button onclick="toggleParticipants()" id="btn-participants" class="hidden w-8 h-8 rounded-full text-zinc-500 hover:text-zinc-800 hover:bg-zinc-100 flex items-center justify-center transition-colors" title="View Participants">
                 <i class="fas fa-users"></i>
             </button>
 
             <!-- Mic Button (Hidden until connected) -->
-            <button onclick="toggleMic()" id="btn-mic" class="hidden w-8 h-8 rounded-full text-zinc-300 hover:text-white hover:bg-zinc-700 flex items-center justify-center transition-colors" title="Toggle Microphone">
+            <button onclick="toggleMic()" id="btn-mic" class="hidden w-8 h-8 rounded-full text-zinc-500 hover:text-zinc-800 hover:bg-zinc-100 flex items-center justify-center transition-colors" title="Toggle Microphone">
                 <i class="fas fa-microphone-slash"></i>
             </button>
 
             <!-- Share Link Button (Hidden by default) -->
-            <button onclick="showShareModal()" id="btn-share-link" class="hidden w-8 h-8 rounded-full text-zinc-300 hover:text-white hover:bg-zinc-700 flex items-center justify-center transition-colors" title="Share Session Link">
+            <button onclick="showShareModal()" id="btn-share-link" class="hidden w-8 h-8 rounded-full text-zinc-500 hover:text-zinc-800 hover:bg-zinc-100 flex items-center justify-center transition-colors" title="Share Session Link">
                 <i class="fas fa-share-alt"></i>
             </button>
 
-            <div class="w-px h-6 bg-zinc-600"></div>
+            <div class="w-px h-6 bg-zinc-200"></div>
 
-            <div class="flex items-center gap-1 md:gap-2 border-r border-zinc-600 pr-2 md:pr-4">
+            <div class="flex items-center gap-1 md:gap-2 border-r border-zinc-200 pr-2 md:pr-4">
                 <!-- Pan Tool (New for Mobile) -->
-                <button onclick="setTool('pan')" id="btn-pan" class="tool-btn w-10 h-10 rounded-full bg-zinc-700 text-zinc-300 hover:bg-zinc-600 flex items-center justify-center" title="Pan / Scroll (Space)">
+                <button onclick="setTool('pan')" id="btn-pan" class="tool-btn w-10 h-10 rounded-full bg-zinc-100 text-zinc-500 hover:bg-zinc-200 flex items-center justify-center" title="Pan / Scroll (Space)">
                     <i class="fas fa-hand-paper"></i>
                 </button>
                 
-                <button onclick="setTool('pen')" id="btn-pen" class="tool-btn active w-10 h-10 rounded-full bg-zinc-700 text-zinc-300 hover:bg-zinc-600 flex items-center justify-center" title="Pen (P)">
+                <button onclick="setTool('pen')" id="btn-pen" class="tool-btn active w-10 h-10 rounded-full bg-zinc-100 text-zinc-500 hover:bg-zinc-200 flex items-center justify-center" title="Pen (P)">
                     <i class="fas fa-pen"></i>
                 </button>
-                <button onclick="setTool('eraser')" id="btn-eraser" class="tool-btn w-10 h-10 rounded-full bg-zinc-700 text-zinc-300 hover:bg-zinc-600 flex items-center justify-center" title="Eraser (E)">
+                <button onclick="setTool('eraser')" id="btn-eraser" class="tool-btn w-10 h-10 rounded-full bg-zinc-100 text-zinc-500 hover:bg-zinc-200 flex items-center justify-center" title="Eraser (E)">
                     <i class="fas fa-eraser"></i>
                 </button>
             </div>
             
-            <div class="flex items-center gap-2 md:gap-3 border-r border-zinc-600 pr-2 md:pr-4">
-                <input type="color" id="colorPicker" value="#ffffff" title="Color">
+            <div class="flex items-center gap-2 md:gap-3 border-r border-zinc-200 pr-2 md:pr-4">
+                <input type="color" id="colorPicker" value="#000000" title="Color">
                 <div id="size-container" class="flex flex-col w-16 md:w-24">
-                    <div class="flex justify-between text-[10px] text-zinc-400 mb-1">
+                    <div class="flex justify-between text-[10px] text-zinc-500 mb-1">
                         <span id="size-label-text">Size</span>
                         <span id="sizeValue">5px</span>
                     </div>
-                    <input type="range" min="1" max="50" value="5" id="sizeSlider" class="w-full accent-blue-500 h-1 bg-zinc-600 rounded-lg appearance-none cursor-pointer" oninput="updateSize(this.value)">
+                    <input type="range" min="1" max="50" value="5" id="sizeSlider" class="w-full accent-blue-500 h-1 bg-zinc-200 rounded-lg appearance-none cursor-pointer" oninput="updateSize(this.value)">
                 </div>
             </div>
             
             <div class="flex items-center gap-1 md:gap-2">
-                <button onclick="undo()" class="undo-redo-btn w-8 h-8 rounded-full text-zinc-400 hover:text-white hover:bg-zinc-700 flex items-center justify-center transition-colors" title="Undo (Ctrl+Z)"><i class="fas fa-undo"></i></button>
-                <button onclick="redo()" class="undo-redo-btn w-8 h-8 rounded-full text-zinc-400 hover:text-white hover:bg-zinc-700 flex items-center justify-center transition-colors" title="Redo (Ctrl+Y)"><i class="fas fa-redo"></i></button>
+                <button onclick="undo()" class="undo-redo-btn w-8 h-8 rounded-full text-zinc-500 hover:text-zinc-800 hover:bg-zinc-100 flex items-center justify-center transition-colors" title="Undo (Ctrl+Z)"><i class="fas fa-undo"></i></button>
+                <button onclick="redo()" class="undo-redo-btn w-8 h-8 rounded-full text-zinc-500 hover:text-zinc-800 hover:bg-zinc-100 flex items-center justify-center transition-colors" title="Redo (Ctrl+Y)"><i class="fas fa-redo"></i></button>
             </div>
         </div>
         
         <!-- Toggle Button -->
-        <button onclick="toggleToolbar()" id="toggle-arrow" class="absolute -bottom-5 w-10 h-6 bg-zinc-800/80 border-b border-r border-l border-zinc-700 rounded-b-lg text-zinc-400 hover:text-white flex items-center justify-center backdrop-blur-md shadow-md transition-all">
+        <button onclick="toggleToolbar()" id="toggle-arrow" class="absolute -bottom-5 w-10 h-6 bg-white/90 border-b border-r border-l border-zinc-200 rounded-b-lg text-zinc-500 hover:text-zinc-800 flex items-center justify-center backdrop-blur-md shadow-sm transition-all">
             <i class="fas fa-chevron-up text-xs"></i>
         </button>
     </div>
@@ -489,32 +496,32 @@
     <!-- Page Controls (Bottom Left) -->
     <div id="page-controls-wrapper" class="fixed bottom-6 left-6 z-50">
         <!-- Toggle Arrow -->
-        <button onclick="togglePageControls()" id="page-toggle-arrow" class="absolute top-1/2 -right-8 transform -translate-y-1/2 w-6 h-10 bg-zinc-800/80 border border-zinc-700 rounded-r-lg text-zinc-400 hover:text-white flex items-center justify-center backdrop-blur-md shadow-md transition-all">
+        <button onclick="togglePageControls()" id="page-toggle-arrow" class="absolute top-1/2 -right-8 transform -translate-y-1/2 w-6 h-10 bg-white/90 border border-zinc-200 rounded-r-lg text-zinc-500 hover:text-zinc-800 flex items-center justify-center backdrop-blur-md shadow-sm transition-all">
             <i class="fas fa-chevron-left text-xs"></i>
         </button>
 
-        <div id="page-controls-content" class="bg-zinc-800/80 border border-zinc-700 rounded-full shadow-xl px-4 py-2 flex items-center gap-3">
-            <button onclick="scrollToPrevPage()" class="w-8 h-8 rounded-full text-zinc-400 hover:text-white hover:bg-zinc-700 flex items-center justify-center transition-colors"><i class="fas fa-chevron-up"></i></button>
-            <span id="pageIndicator" class="text-zinc-200 text-sm font-medium w-16 text-center select-none">Page 1</span>
-            <button onclick="scrollToNextPage()" class="w-8 h-8 rounded-full text-zinc-400 hover:text-white hover:bg-zinc-700 flex items-center justify-center transition-colors"><i class="fas fa-chevron-down"></i></button>
-            <div class="w-px h-6 bg-zinc-600 mx-1"></div>
-            <button onclick="addPage()" class="w-8 h-8 rounded-full bg-blue-600/20 text-blue-400 hover:bg-blue-600/40 flex items-center justify-center transition-colors"><i class="fas fa-plus"></i></button>
-            <button onclick="deletePage()" class="w-8 h-8 rounded-full hover:bg-red-900/40 text-red-400 hover:text-red-300 flex items-center justify-center transition-colors"><i class="fas fa-times"></i></button>
+        <div id="page-controls-content" class="bg-white/90 border border-zinc-200 rounded-full shadow-lg px-4 py-2 flex items-center gap-3">
+            <button onclick="scrollToPrevPage()" class="w-8 h-8 rounded-full text-zinc-500 hover:text-zinc-800 hover:bg-zinc-100 flex items-center justify-center transition-colors"><i class="fas fa-chevron-up"></i></button>
+            <span id="pageIndicator" class="text-zinc-700 text-sm font-medium w-16 text-center select-none">Page 1</span>
+            <button onclick="scrollToNextPage()" class="w-8 h-8 rounded-full text-zinc-500 hover:text-zinc-800 hover:bg-zinc-100 flex items-center justify-center transition-colors"><i class="fas fa-chevron-down"></i></button>
+            <div class="w-px h-6 bg-zinc-200 mx-1"></div>
+            <button onclick="addPage()" class="w-8 h-8 rounded-full bg-blue-600/10 text-blue-600 hover:bg-blue-600/20 flex items-center justify-center transition-colors"><i class="fas fa-plus"></i></button>
+            <button onclick="deletePage()" class="w-8 h-8 rounded-full hover:bg-red-50 text-red-500 hover:text-red-600 flex items-center justify-center transition-colors"><i class="fas fa-times"></i></button>
         </div>
     </div>
 
     <!-- Right Actions Toolbar with Toggle -->
     <div id="right-toolbar-wrapper" class="fixed bottom-6 right-6 z-50">
         <!-- Toggle Arrow -->
-        <button onclick="toggleRightToolbar()" id="right-toggle-arrow" class="absolute top-1/2 -left-8 transform -translate-y-1/2 w-6 h-10 bg-zinc-800/80 border border-zinc-700 rounded-l-lg text-zinc-400 hover:text-white flex items-center justify-center backdrop-blur-md shadow-md transition-all">
+        <button onclick="toggleRightToolbar()" id="right-toggle-arrow" class="absolute top-1/2 -left-8 transform -translate-y-1/2 w-6 h-10 bg-white/90 border border-zinc-200 rounded-l-lg text-zinc-500 hover:text-zinc-800 flex items-center justify-center backdrop-blur-md shadow-sm transition-all">
             <i class="fas fa-chevron-right text-xs"></i>
         </button>
 
         <!-- Content -->
         <div id="right-toolbar-content" class="flex flex-col gap-3 transition-opacity duration-200">
-            <button onclick="toggleGrid()" class="w-12 h-12 rounded-full bg-zinc-800 border border-zinc-700 text-zinc-300 hover:bg-zinc-700 shadow-lg flex items-center justify-center transition-all" title="Toggle Grid"><i class="fas fa-border-all"></i></button>
+            <button onclick="toggleGrid()" class="w-12 h-12 rounded-full bg-white border border-zinc-200 text-zinc-600 hover:bg-zinc-50 shadow-lg flex items-center justify-center transition-all" title="Toggle Grid"><i class="fas fa-border-all"></i></button>
             <button onclick="convertInkToText()" class="w-12 h-12 rounded-full bg-emerald-600 text-white hover:bg-emerald-700 shadow-lg flex items-center justify-center transition-all" title="Convert to Text"><i class="fas fa-font"></i></button>
-            <button onclick="clearCanvas()" class="w-12 h-12 rounded-full bg-red-900/50 border border-red-800 text-red-200 hover:bg-red-900/80 shadow-lg flex items-center justify-center transition-all" title="Clear Page"><i class="fas fa-trash-alt"></i></button>
+            <button onclick="clearCanvas()" class="w-12 h-12 rounded-full bg-red-50 border border-red-200 text-red-500 hover:bg-red-100 shadow-lg flex items-center justify-center transition-all" title="Clear Page"><i class="fas fa-trash-alt"></i></button>
             <button onclick="downloadPDF()" class="w-12 h-12 rounded-full bg-indigo-600 text-white hover:bg-indigo-700 shadow-lg flex items-center justify-center transition-all" title="Download All as PDF"><i class="fas fa-file-pdf"></i></button>
             <button onclick="downloadCanvas()" class="w-12 h-12 rounded-full bg-blue-600 text-white hover:bg-blue-700 shadow-lg flex items-center justify-center transition-all" title="Download Image"><i class="fas fa-image"></i></button>
         </div>
@@ -534,7 +541,7 @@
         let state = {
             mode: 'IDLE', 
             lastX: 0, lastY: 0,
-            tool: 'pen', color: '#ffffff', baseSize: 5, pressureEnabled: true,
+            tool: 'pen', color: '#000000', baseSize: 5, pressureEnabled: true,
             isSpaceBarDown: false,
             startScrollTop: 0, startScrollLeft: 0,
             pages: [], activePageIndex: 0, 
@@ -782,13 +789,13 @@
 
             list.forEach(p => {
                 const li = document.createElement('li');
-                li.className = 'flex items-center gap-2 text-zinc-300 text-sm';
+                li.className = 'flex items-center gap-2 text-zinc-600 text-sm';
                 li.innerHTML = `
-                    <div class="w-6 h-6 rounded-full bg-zinc-700 flex items-center justify-center text-xs font-bold text-blue-400">
+                    <div class="w-6 h-6 rounded-full bg-zinc-200 flex items-center justify-center text-xs font-bold text-blue-600">
                         ${p.name.charAt(0).toUpperCase()}
                     </div>
                     <span>${p.name}</span>
-                    ${p.isHost ? '<span class="text-[10px] bg-blue-900 text-blue-200 px-1 rounded">HOST</span>' : ''}
+                    ${p.isHost ? '<span class="text-[10px] bg-blue-100 text-blue-800 px-1 rounded">HOST</span>' : ''}
                 `;
                 ul.appendChild(li);
             });
@@ -1343,7 +1350,7 @@
         function redo() { if (state.selection.active) stampSelection(); const page = state.pages[state.activePageIndex]; if (page && page.historyStep < page.history.length - 1) { page.historyStep++; restoreState(page); triggerSave(); } }
         function restoreState(page) { if (!page.history[page.historyStep]) { page.ctx.clearRect(0, 0, page.canvas.width, page.canvas.height); return; } const img = new Image(); img.src = page.history[page.historyStep]; img.onload = () => { page.ctx.save(); page.ctx.setTransform(1, 0, 0, 1, 0, 0); page.ctx.clearRect(0, 0, page.canvas.width, page.canvas.height); page.ctx.drawImage(img, 0, 0); page.ctx.restore(); }; }
         function clearCanvas() { if(state.selection.active) stampSelection(); const page = state.pages[state.activePageIndex]; if (!page) return; page.ctx.save(); page.ctx.setTransform(1, 0, 0, 1, 0, 0); page.ctx.clearRect(0, 0, page.canvas.width, page.canvas.height); page.ctx.restore(); saveStateToPage(state.activePageIndex); triggerSave(); }
-        function getCompositedCanvas(sourceCanvas) { const tempCanvas = document.createElement('canvas'); tempCanvas.width = sourceCanvas.width; tempCanvas.height = sourceCanvas.height; const ctx = tempCanvas.getContext('2d'); ctx.fillStyle = '#18181b'; ctx.fillRect(0, 0, tempCanvas.width, tempCanvas.height); ctx.drawImage(sourceCanvas, 0, 0); return tempCanvas; }
+        function getCompositedCanvas(sourceCanvas) { const tempCanvas = document.createElement('canvas'); tempCanvas.width = sourceCanvas.width; tempCanvas.height = sourceCanvas.height; const ctx = tempCanvas.getContext('2d'); ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, tempCanvas.width, tempCanvas.height); ctx.drawImage(sourceCanvas, 0, 0); return tempCanvas; }
         function downloadCanvas() { if(state.selection.active) stampSelection(); const page = state.pages[state.activePageIndex]; if(!page) return; const composite = getCompositedCanvas(page.canvas); const link = document.createElement('a'); link.download = `whiteboard-p${state.activePageIndex+1}.png`; link.href = composite.toDataURL('image/png'); link.click(); }
         function deleteSelection() { if (!state.selection.active) return; liftSelection(); state.selection.active = false; state.selection.image = null; state.lassoPath = []; selectionUi.classList.remove('active'); saveStateToPage(state.activePageIndex); triggerSave(); }
         function stampSelection() { if (!state.selection.active) return; if (state.selection.image) { const page = state.pages[state.selection.pageIndex]; const dpr = window.devicePixelRatio || 1; page.ctx.drawImage(state.selection.image, state.selection.x * dpr, state.selection.y * dpr); } state.selection.active = false; state.selection.image = null; state.lassoPath = []; selectionUi.classList.remove('active'); saveStateToPage(state.selection.pageIndex); triggerSave(); }
