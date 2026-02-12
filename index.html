@@ -2,10 +2,10 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Pressure Sensitive Whiteboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <!-- Tesseract.js for OCR -->
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
@@ -20,6 +20,7 @@
             touch-action: none; 
             user-select: none;
             font-family: 'Inter', sans-serif;
+            -webkit-tap-highlight-color: transparent;
         }
 
         #scroll-view {
@@ -31,6 +32,7 @@
             overflow-y: auto;
             overflow-x: hidden;
             scroll-behavior: smooth;
+            -webkit-overflow-scrolling: touch; /* smooth scrolling iOS */
         }
 
         #pages-stack {
@@ -51,6 +53,12 @@
             border-bottom: 1px dashed #3f3f46;
             box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
         }
+        
+        /* When Pan tool is active, let events pass through to scroll container */
+        .pan-active .page-canvas {
+            pointer-events: none !important;
+        }
+
         .page-canvas:last-child {
             border-bottom: none;
         }
@@ -149,7 +157,11 @@
         /* Top Toolbar Animations */
         #toolbar-wrapper {
             transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            width: 100%;
+            pointer-events: none; /* Let clicks pass through empty space */
         }
+        #toolbar-wrapper > * { pointer-events: auto; } /* Re-enable clicks on children */
+        
         #toolbar-wrapper.collapsed {
             transform: translate(-50%, -100%);
         }
@@ -253,6 +265,72 @@
             opacity: 0;
             pointer-events: none;
         }
+
+        /* --- MOBILE RESPONSIVE STYLES --- */
+        @media (max-width: 640px) {
+            #toolbar-content {
+                padding: 0.5rem 0.75rem;
+                gap: 0.5rem;
+                max-width: 98vw;
+                height: 56px;
+                border-radius: 16px;
+                /* Allow horizontal scroll on very small screens if needed */
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+            }
+
+            /* Shrink tool buttons */
+            .tool-btn, #btn-share-link, #btn-mic, #btn-participants, .undo-redo-btn {
+                width: 2rem !important; /* 32px */
+                height: 2rem !important;
+                font-size: 0.875rem; /* 14px */
+            }
+
+            /* Compact Color Picker */
+            input[type="color"] {
+                width: 24px;
+                height: 24px;
+            }
+
+            /* Hide labels and less critical info */
+            #collab-text, #sizeValue, #size-label-text {
+                display: none;
+            }
+
+            /* Adjust slider container */
+            #size-container {
+                width: 60px !important;
+            }
+
+            /* Reposition Bottom Controls */
+            #page-controls-wrapper {
+                bottom: 1rem;
+                left: 0.5rem;
+                transform: scale(0.9);
+                transform-origin: bottom left;
+                z-index: 55;
+            }
+
+            #right-toolbar-wrapper {
+                bottom: 1rem;
+                right: 0.5rem;
+                transform: scale(0.9);
+                transform-origin: bottom right;
+                z-index: 55;
+            }
+
+            /* Floating panel adjustments */
+            #participants-panel {
+                width: 90vw;
+                right: 5vw;
+                top: 80px;
+            }
+
+            /* Make wheel smaller on mobile */
+            #quick-wheel {
+                transform: scale(0.8) translate(-60%, -60%);
+            }
+        }
     </style>
 </head>
 <body id="body-bg">
@@ -262,7 +340,7 @@
 
     <!-- Text Result Modal -->
     <div id="text-result-modal" class="hidden fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm">
-        <div class="bg-zinc-800 border border-zinc-700 rounded-2xl p-6 w-96 shadow-2xl relative animate-[fadeIn_0.2s_ease-out]">
+        <div class="bg-zinc-800 border border-zinc-700 rounded-2xl p-6 w-96 shadow-2xl relative animate-[fadeIn_0.2s_ease-out] mx-4">
             <button onclick="closeTextModal()" class="absolute top-4 right-4 text-zinc-400 hover:text-white"><i class="fas fa-times"></i></button>
             <h2 class="text-xl text-white font-semibold mb-4"><i class="fas fa-align-left mr-2 text-emerald-500"></i>Recognized Text</h2>
             <div id="text-result-content" class="bg-zinc-900/50 p-4 rounded-lg text-zinc-200 min-h-[100px] max-h-[300px] overflow-y-auto whitespace-pre-wrap font-mono text-sm border border-zinc-700/50"></div>
@@ -275,7 +353,7 @@
 
     <!-- Name Entry Modal -->
     <div id="name-modal" class="hidden fixed inset-0 z-[70] flex items-center justify-center bg-black/80 backdrop-blur-md">
-        <div class="bg-zinc-900 border border-zinc-700 rounded-xl p-6 w-full max-w-sm shadow-2xl transform scale-100 transition-all">
+        <div class="bg-zinc-900 border border-zinc-700 rounded-xl p-6 w-full max-w-sm shadow-2xl transform scale-100 transition-all mx-4">
             <h3 class="text-lg font-bold text-white mb-2"><i class="fas fa-user-tag text-blue-500 mr-2"></i>Join Session</h3>
             <p class="text-zinc-400 text-sm mb-4">Please enter your name to continue.</p>
             <input type="text" id="username-input" class="w-full bg-zinc-800 border border-zinc-600 text-white rounded-lg px-4 py-2 mb-4 outline-none focus:border-blue-500" placeholder="Your Name">
@@ -285,12 +363,12 @@
 
     <!-- Share Session Modal -->
     <div id="share-modal" class="hidden fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm">
-        <div class="bg-zinc-900 border border-zinc-700 rounded-xl p-6 w-full max-w-md shadow-2xl transform scale-100 transition-all">
+        <div class="bg-zinc-900 border border-zinc-700 rounded-xl p-6 w-full max-w-md shadow-2xl transform scale-100 transition-all mx-4">
             <div class="flex justify-between items-center mb-4">
                 <h3 class="text-lg font-bold text-white"><i class="fas fa-broadcast-tower text-blue-500 mr-2"></i>Hosting Session</h3>
                 <button onclick="closeShareModal()" class="text-zinc-400 hover:text-white"><i class="fas fa-times"></i></button>
             </div>
-            <p class="text-zinc-400 text-sm mb-4">Share this link to invite others. Your PC acts as the server.</p>
+            <p class="text-zinc-400 text-sm mb-4">Share this link to invite others. Your Device acts as the server.</p>
             <div class="flex items-center gap-2 bg-zinc-800 p-2 rounded-lg border border-zinc-700 mb-4">
                 <input type="text" id="share-link-input" readonly class="bg-transparent text-zinc-200 text-sm w-full outline-none px-2 font-mono">
                 <button onclick="copyShareLink()" class="p-2 bg-zinc-700 hover:bg-zinc-600 rounded text-white transition-colors" title="Copy Link"><i class="fas fa-copy"></i></button>
@@ -302,8 +380,8 @@
         </div>
     </div>
 
-    <!-- Dedicated Gesture Zone for Page Navigation (LEFT SIDE) -->
-    <div id="gesture-zone" class="fixed top-0 left-0 w-16 h-full z-40 flex flex-col justify-center items-center group hover:bg-white/5 transition-colors cursor-pointer" title="Swipe vertically here to change/add pages">
+    <!-- Dedicated Gesture Zone for Page Navigation (LEFT SIDE) - Hidden on small mobile screens to prevent accidental swipes -->
+    <div id="gesture-zone" class="fixed top-0 left-0 w-8 md:w-16 h-full z-40 flex flex-col justify-center items-center group hover:bg-white/5 transition-colors cursor-pointer hidden sm:flex" title="Swipe vertically here to change/add pages">
         <div class="h-16 w-1 rounded-full bg-zinc-700/50 group-hover:bg-zinc-500/80 transition-colors mb-2"></div>
         <div class="h-16 w-1 rounded-full bg-zinc-700/50 group-hover:bg-zinc-500/80 transition-colors"></div>
     </div>
@@ -346,11 +424,12 @@
 
     <!-- Top Toolbar Wrapper with Toggle -->
     <div id="toolbar-wrapper" class="fixed top-0 left-1/2 transform -translate-x-1/2 z-50 flex flex-col items-center pt-4">
-        <div id="toolbar-content" class="bg-zinc-800/80 border border-zinc-700 rounded-full shadow-xl px-4 py-2 flex items-center gap-4 backdrop-blur-md transition-all">
+        <div id="toolbar-content" class="bg-zinc-800/80 border border-zinc-700 rounded-full shadow-xl px-4 py-2 flex items-center gap-2 md:gap-4 backdrop-blur-md transition-all">
             <!-- Collaboration Button -->
-            <button onclick="handleCollabButton()" id="btn-collab" class="flex items-center px-3 py-1.5 rounded-full bg-zinc-700 hover:bg-zinc-600 text-zinc-300 text-xs font-medium transition-colors border border-transparent">
+            <button onclick="handleCollabButton()" id="btn-collab" class="flex items-center px-2 py-1.5 md:px-3 rounded-full bg-zinc-700 hover:bg-zinc-600 text-zinc-300 text-xs font-medium transition-colors border border-transparent">
                 <span id="collab-dot" class="collab-status-dot"></span>
-                <span id="collab-text">Host</span>
+                <span id="collab-text" class="hidden md:inline">Host</span>
+                <i class="fas fa-wifi md:hidden"></i>
             </button>
             
             <!-- Participants Toggle -->
@@ -370,23 +449,34 @@
 
             <div class="w-px h-6 bg-zinc-600"></div>
 
-            <div class="flex items-center gap-2 border-r border-zinc-600 pr-4">
-                <button onclick="setTool('pen')" id="btn-pen" class="tool-btn active w-10 h-10 rounded-full bg-zinc-700 text-zinc-300 hover:bg-zinc-600 flex items-center justify-center" title="Pen (P)"><i class="fas fa-pen"></i></button>
-                <button onclick="setTool('eraser')" id="btn-eraser" class="tool-btn w-10 h-10 rounded-full bg-zinc-700 text-zinc-300 hover:bg-zinc-600 flex items-center justify-center" title="Eraser (E)"><i class="fas fa-eraser"></i></button>
+            <div class="flex items-center gap-1 md:gap-2 border-r border-zinc-600 pr-2 md:pr-4">
+                <!-- Pan Tool (New for Mobile) -->
+                <button onclick="setTool('pan')" id="btn-pan" class="tool-btn w-10 h-10 rounded-full bg-zinc-700 text-zinc-300 hover:bg-zinc-600 flex items-center justify-center" title="Pan / Scroll (Space)">
+                    <i class="fas fa-hand-paper"></i>
+                </button>
+                
+                <button onclick="setTool('pen')" id="btn-pen" class="tool-btn active w-10 h-10 rounded-full bg-zinc-700 text-zinc-300 hover:bg-zinc-600 flex items-center justify-center" title="Pen (P)">
+                    <i class="fas fa-pen"></i>
+                </button>
+                <button onclick="setTool('eraser')" id="btn-eraser" class="tool-btn w-10 h-10 rounded-full bg-zinc-700 text-zinc-300 hover:bg-zinc-600 flex items-center justify-center" title="Eraser (E)">
+                    <i class="fas fa-eraser"></i>
+                </button>
             </div>
-            <div class="flex items-center gap-3 border-r border-zinc-600 pr-4">
+            
+            <div class="flex items-center gap-2 md:gap-3 border-r border-zinc-600 pr-2 md:pr-4">
                 <input type="color" id="colorPicker" value="#ffffff" title="Color">
-                <div class="flex flex-col w-24">
+                <div id="size-container" class="flex flex-col w-16 md:w-24">
                     <div class="flex justify-between text-[10px] text-zinc-400 mb-1">
-                        <span>Size</span>
+                        <span id="size-label-text">Size</span>
                         <span id="sizeValue">5px</span>
                     </div>
                     <input type="range" min="1" max="50" value="5" id="sizeSlider" class="w-full accent-blue-500 h-1 bg-zinc-600 rounded-lg appearance-none cursor-pointer" oninput="updateSize(this.value)">
                 </div>
             </div>
-            <div class="flex items-center gap-2">
-                <button onclick="undo()" class="w-8 h-8 rounded-full text-zinc-400 hover:text-white hover:bg-zinc-700 flex items-center justify-center transition-colors" title="Undo (Ctrl+Z)"><i class="fas fa-undo"></i></button>
-                <button onclick="redo()" class="w-8 h-8 rounded-full text-zinc-400 hover:text-white hover:bg-zinc-700 flex items-center justify-center transition-colors" title="Redo (Ctrl+Y)"><i class="fas fa-redo"></i></button>
+            
+            <div class="flex items-center gap-1 md:gap-2">
+                <button onclick="undo()" class="undo-redo-btn w-8 h-8 rounded-full text-zinc-400 hover:text-white hover:bg-zinc-700 flex items-center justify-center transition-colors" title="Undo (Ctrl+Z)"><i class="fas fa-undo"></i></button>
+                <button onclick="redo()" class="undo-redo-btn w-8 h-8 rounded-full text-zinc-400 hover:text-white hover:bg-zinc-700 flex items-center justify-center transition-colors" title="Redo (Ctrl+Y)"><i class="fas fa-redo"></i></button>
             </div>
         </div>
         
@@ -489,12 +579,19 @@
             if (roomParam) {
                 // If room param exists, trigger name modal flow
                 state.pendingRoomId = roomParam;
-                document.getElementById('collab-text').textContent = "Join Session...";
+                const txt = document.getElementById('collab-text');
+                if(txt) txt.textContent = "Join Session...";
                 showNameModal();
             }
 
             setupObserver();
             setupGlobalEvents();
+            
+            // Check if mobile on init for initial tool
+            if (window.innerWidth < 768) {
+                // On mobile we might want to ensure controls are visible
+                // but default tool stays pen
+            }
         }
 
         // --- NAME MODAL LOGIC ---
@@ -539,7 +636,7 @@
             const dot = document.getElementById('collab-dot');
             const txt = document.getElementById('collab-text');
             
-            txt.textContent = "Starting...";
+            if(txt) txt.textContent = "Starting...";
 
             state.isHost = true;
             state.roomId = 'wb-' + Math.random().toString(36).substr(2, 9);
@@ -560,7 +657,7 @@
 
             state.peer.on('open', (id) => {
                 console.log('My peer ID is: ' + id);
-                txt.textContent = "Hosting";
+                if(txt) txt.textContent = "Hosting";
                 dot.classList.add('online');
                 document.getElementById('toolbar-content').classList.add('collab-active');
                 document.getElementById('btn-share-link').classList.remove('hidden');
@@ -585,7 +682,7 @@
             state.peer.on('error', (err) => {
                 console.error(err);
                 alert("P2P Error: " + err.type);
-                txt.textContent = "Host";
+                if(txt) txt.textContent = "Host";
             });
         }
 
@@ -594,7 +691,7 @@
             const dot = document.getElementById('collab-dot');
             const txt = document.getElementById('collab-text');
             
-            txt.textContent = "Joining...";
+            if(txt) txt.textContent = "Joining...";
             state.roomId = roomId;
             state.isHost = false;
 
@@ -618,7 +715,7 @@
 
             state.peer.on('error', (err) => {
                 console.error(err);
-                txt.textContent = "Error";
+                if(txt) txt.textContent = "Error";
                 alert("Could not join session. Host might be offline.");
             });
         }
@@ -630,7 +727,7 @@
             conn.on('open', () => {
                 console.log("Connection established");
                 state.connections.push(conn);
-                txt.textContent = state.isHost ? "Hosting" : "Joined";
+                if(txt) txt.textContent = state.isHost ? "Hosting" : "Joined";
                 dot.classList.add('online');
                 document.getElementById('toolbar-content').classList.add('collab-active');
                 if(state.isHost) document.getElementById('btn-share-link').classList.remove('hidden');
@@ -659,7 +756,7 @@
             conn.on('close', () => {
                 state.connections = state.connections.filter(c => c !== conn);
                 if (state.connections.length === 0 && !state.isHost) {
-                    txt.textContent = "Disconnected";
+                    if(txt) txt.textContent = "Disconnected";
                     dot.classList.remove('online');
                 } else if (state.isHost) {
                     // Remove participant
@@ -895,8 +992,10 @@
             canvas.className = 'page-canvas';
             canvas.id = `page-${index}`;
             const dpr = window.devicePixelRatio || 1;
+            // Use window.innerWidth but subtract a tiny buffer to avoid rounding errors causing scrolls
             const width = Math.max(1, window.innerWidth);
-            const height = Math.max(1, window.innerHeight);
+            const height = Math.max(1, window.innerHeight); // Make it screen height
+            
             canvas.style.width = `${width}px`;
             canvas.style.height = `${height}px`;
             canvas.width = width * dpr;
@@ -905,6 +1004,12 @@
             ctx.scale(dpr, dpr);
             ctx.lineCap = 'round';
             ctx.lineJoin = 'round';
+            
+            // If Pan mode is currently active, ensure new canvas has pointer-events: none
+            if (state.tool === 'pan') {
+                pagesStack.classList.add('pan-active');
+            }
+            
             return { canvas, ctx };
         }
 
@@ -986,11 +1091,14 @@
                 if (page.canvas.width > 0) { tempCanvas = document.createElement('canvas'); tempCanvas.width = page.canvas.width; tempCanvas.height = page.canvas.height; tempCanvas.getContext('2d').drawImage(page.canvas, 0, 0); }
                 page.canvas.style.width = `${width}px`; page.canvas.style.height = `${height}px`; page.canvas.width = width * dpr; page.canvas.height = height * dpr;
                 page.ctx.scale(dpr, dpr); page.ctx.lineCap = 'round'; page.ctx.lineJoin = 'round';
-                if (tempCanvas) page.ctx.drawImage(tempCanvas, 0, 0, width, height);
+                // Simply draw the old content back. On mobile rotation, this preserves content but might stretch or crop it.
+                // For a whiteboard, cropping/extending is better than stretching.
+                if (tempCanvas) page.ctx.drawImage(tempCanvas, 0, 0); 
             });
             baseCanvas.width = width * dpr; baseCanvas.height = height * dpr;
         }
         window.addEventListener('resize', resize);
+        window.addEventListener('orientationchange', () => setTimeout(resize, 200));
 
         function setupObserver() {
             const observer = new IntersectionObserver((entries) => {
@@ -1013,6 +1121,7 @@
 
         function setupGlobalEvents() {
             scrollView.addEventListener('contextmenu', e => e.preventDefault());
+            // We attach pointer events to the wrapper to delegate, but individual canvases capture pointers too
             scrollView.addEventListener('pointerdown', handlePointerDown);
             window.addEventListener('pointermove', handlePointerMove);
             window.addEventListener('pointerup', handlePointerUp);
@@ -1029,17 +1138,76 @@
         }
 
         function handlePointerDown(e) {
-            if (state.isSpaceBarDown) { state.mode = 'PANNING'; state.lastX = e.clientX; state.lastY = e.clientY; state.startScrollTop = scrollView.scrollTop; scrollView.classList.add('cursor-panning'); return; }
+            // Pan Tool or Spacebar Logic
+            if (state.isSpaceBarDown || state.tool === 'pan') { 
+                // Native scrolling handles panning if we don't preventDefault
+                // If we want custom drag panning:
+                /*
+                state.mode = 'PANNING'; 
+                state.lastX = e.clientX; 
+                state.lastY = e.clientY; 
+                state.startScrollTop = scrollView.scrollTop; 
+                scrollView.classList.add('cursor-panning'); 
+                */
+                // For mobile, we rely on native touch scrolling (by removing pointer-events from canvas)
+                return; 
+            }
+            
             const info = getEventInfo(e);
-            if (e.button === 2 || e.button === 5) { state.activePageIndex = info ? info.pageIndex : state.activePageIndex; state.mode = 'LASSO_WAIT'; state.menuX = e.clientX; state.menuY = e.clientY; if(info) { const page = state.pages[info.pageIndex]; if(page) state.lassoSnapshot = page.ctx.getImageData(0, 0, page.canvas.width, page.canvas.height); state.lassoPath = [{x: info.x, y: info.y}]; state.lastX = info.x; state.lastY = info.y; } hideQuickWheel(); return; }
+            
+            // Right click/Long press logic
+            if (e.button === 2 || e.button === 5) { 
+                state.activePageIndex = info ? info.pageIndex : state.activePageIndex; 
+                state.mode = 'LASSO_WAIT'; 
+                state.menuX = e.clientX; 
+                state.menuY = e.clientY; 
+                if(info) { 
+                    const page = state.pages[info.pageIndex]; 
+                    if(page) state.lassoSnapshot = page.ctx.getImageData(0, 0, page.canvas.width, page.canvas.height); 
+                    state.lassoPath = [{x: info.x, y: info.y}]; 
+                    state.lastX = info.x; state.lastY = info.y; 
+                } 
+                hideQuickWheel(); 
+                return; 
+            }
+            
             if (!info) return;
-            state.activePageIndex = info.pageIndex; updatePageIndicator();
-            if (state.selection.active && state.selection.pageIndex === info.pageIndex) { const s = state.selection; if (info.x >= s.x && info.x <= s.x + s.w && info.y >= s.y && info.y <= s.y + s.h) { if (e.buttons === 1) { liftSelection(); state.mode = 'MOVING_SELECTION'; state.lastX = info.x; state.lastY = info.y; renderSelectionMove(); return; } } else stampSelection(); } else if (state.selection.active) stampSelection();
-            if (e.buttons === 1) { state.mode = 'DRAWING'; state.lastX = info.x; state.lastY = info.y; state.strokeStartX = e.clientX; state.strokeStartY = e.clientY; state.strokeStartTime = Date.now(); state.currentStrokePoints = [{ x: info.x, y: info.y, p: info.pressure || 0.5 }]; draw(e, info.pageIndex); } else if (e.button === 1) { e.preventDefault(); toggleEraser(); }
+            
+            state.activePageIndex = info.pageIndex; 
+            updatePageIndicator();
+            
+            // Selection Logic
+            if (state.selection.active && state.selection.pageIndex === info.pageIndex) { 
+                const s = state.selection; 
+                if (info.x >= s.x && info.x <= s.x + s.w && info.y >= s.y && info.y <= s.y + s.h) { 
+                    if (e.buttons === 1) { 
+                        liftSelection(); 
+                        state.mode = 'MOVING_SELECTION'; 
+                        state.lastX = info.x; state.lastY = info.y; 
+                        renderSelectionMove(); 
+                        return; 
+                    } 
+                } else stampSelection(); 
+            } else if (state.selection.active) stampSelection();
+
+            // Drawing Logic
+            if (e.buttons === 1) { 
+                state.mode = 'DRAWING'; 
+                state.lastX = info.x; 
+                state.lastY = info.y; 
+                state.strokeStartX = e.clientX; 
+                state.strokeStartY = e.clientY; 
+                state.strokeStartTime = Date.now(); 
+                state.currentStrokePoints = [{ x: info.x, y: info.y, p: info.pressure || 0.5 }]; 
+                draw(e, info.pageIndex); 
+            } else if (e.button === 1) { 
+                e.preventDefault(); toggleEraser(); 
+            }
         }
 
         function handlePointerMove(e) {
             if (state.mode === 'PANNING') { scrollView.scrollTop = state.startScrollTop - (e.clientY - state.lastY); return; }
+            
             const info = getEventInfo(e);
             if (state.mode === 'MOVING_SELECTION') { if (!info || info.pageIndex !== state.selection.pageIndex) return; state.selection.x += info.x - state.lastX; state.selection.y += info.y - state.lastY; state.lastX = info.x; state.lastY = info.y; updateSelectionVisuals(); renderSelectionMove(); } 
             else if (state.mode === 'LASSO_WAIT') { if (!info) return; if (Math.hypot(info.x - state.lastX, info.y - state.lastY) > 5) state.mode = 'LASSOING'; }
@@ -1143,7 +1311,19 @@
         function closeTextModal() { document.getElementById('text-result-modal').classList.add('hidden'); }
         function copyTextResult() { navigator.clipboard.writeText(document.getElementById('text-result-content').textContent); closeTextModal(); }
         
-        function setTool(t) { if(state.selection.active) stampSelection(); state.tool = t; document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active')); document.getElementById(`btn-${t}`).classList.add('active'); }
+        function setTool(t) { 
+            if(state.selection.active) stampSelection(); 
+            state.tool = t; 
+            document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active')); 
+            document.getElementById(`btn-${t}`).classList.add('active'); 
+            
+            // Handle Pan Tool CSS
+            if (t === 'pan') {
+                pagesStack.classList.add('pan-active');
+            } else {
+                pagesStack.classList.remove('pan-active');
+            }
+        }
         function toggleEraser() { setTool(state.tool === 'eraser' ? 'pen' : 'eraser'); }
         function updateSize(v) { state.baseSize = parseInt(v); document.getElementById('sizeValue').textContent = v + 'px'; }
         document.getElementById('colorPicker').addEventListener('input', e => { state.color = e.target.value; setTool('pen'); });
