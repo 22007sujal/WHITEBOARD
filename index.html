@@ -555,6 +555,8 @@
         let state = {
             mode: 'IDLE', 
             lastX: 0, lastY: 0,
+            lastPointDrawn: {x: 0, y: 0}, // New: for quadratic bezier
+            lastPressure: 0.5, // New: for smoothing
             tool: 'pen', color: '#000000', baseSize: 5, pressureEnabled: true,
             isSpaceBarDown: false,
             startScrollTop: 0, startScrollLeft: 0,
@@ -954,6 +956,7 @@
         }
 
         function drawRemoteStroke(strokeData) {
+            // Updated to use Quadratic Curves for smoother remote viewing
             while (state.pages.length <= strokeData.pageIndex) addPage(false);
             const page = state.pages[strokeData.pageIndex];
             const ctx = page.ctx;
@@ -972,16 +975,47 @@
                 ctx.strokeStyle = strokeData.color;
             }
 
-            for (let i = 1; i < points.length; i++) {
-                const p1 = points[i-1];
-                const p2 = points[i];
-                const pressure = p2.p || 0.5;
+            // Begin path and move to first point
+            ctx.beginPath();
+            ctx.moveTo(points[0].x, points[0].y);
+
+            if (strokeData.tool === 'eraser') {
+                // Eraser can use simple lines efficiently
+                for (let i = 1; i < points.length; i++) {
+                    ctx.lineTo(points[i].x, points[i].y);
+                }
+                ctx.stroke();
+            } else {
+                // For pen, we use quadratic curves and variable width emulation
+                // We have to stroke segment by segment for variable width
+                let lastDrawn = points[0];
+                
+                for (let i = 1; i < points.length; i++) {
+                    const p1 = points[i];
+                    // Calculate midpoint
+                    const midX = (points[i-1].x + p1.x) / 2;
+                    const midY = (points[i-1].y + p1.y) / 2;
+                    
+                    ctx.beginPath();
+                    ctx.moveTo(lastDrawn.x, lastDrawn.y);
+                    ctx.quadraticCurveTo(points[i-1].x, points[i-1].y, midX, midY);
+                    
+                    // Simple pressure width
+                    const pressure = p1.p || 0.5;
+                    ctx.lineWidth = Math.max(0.5, strokeData.baseSize * pressure * 2);
+                    
+                    ctx.stroke();
+                    lastDrawn = {x: midX, y: midY};
+                }
+                
+                // Draw tail
                 ctx.beginPath();
-                ctx.moveTo(p1.x, p1.y);
-                ctx.lineTo(p2.x, p2.y);
-                if (strokeData.tool !== 'eraser') ctx.lineWidth = Math.max(0.5, strokeData.baseSize * pressure * 2);
+                ctx.moveTo(lastDrawn.x, lastDrawn.y);
+                ctx.lineTo(points[points.length-1].x, points[points.length-1].y);
+                ctx.lineWidth = Math.max(0.5, strokeData.baseSize * (points[points.length-1].p || 0.5) * 2);
                 ctx.stroke();
             }
+
             ctx.restore();
         }
 
@@ -1202,13 +1236,21 @@
             // Drawing Logic
             if (e.buttons === 1) { 
                 state.mode = 'DRAWING'; 
+                
+                // Initialize Smooth Drawing State
+                // Removed Math.round for sub-pixel precision
                 state.lastX = info.x; 
-                state.lastY = info.y; 
+                state.lastY = info.y;
+                state.lastPointDrawn = { x: info.x, y: info.y }; // Start of stroke
+                state.lastPressure = info.pressure > 0 ? info.pressure : 0.5; // Init smoothing
+                
                 state.strokeStartX = e.clientX; 
                 state.strokeStartY = e.clientY; 
                 state.strokeStartTime = Date.now(); 
-                state.currentStrokePoints = [{ x: info.x, y: info.y, p: info.pressure || 0.5 }]; 
-                draw(e, info.pageIndex); 
+                state.currentStrokePoints = [{ x: info.x, y: info.y, p: parseFloat(state.lastPressure.toFixed(2)) }]; 
+                
+                // Note: We do NOT draw here. We wait for movement to draw curves.
+                // If it's a tap, PointerUp will handle the dot.
             } else if (e.button === 1) { 
                 e.preventDefault(); toggleEraser(); 
             }
@@ -1230,15 +1272,59 @@
             else if (state.mode === 'LASSOING') { finishLassoSelection(); state.mode = 'IDLE'; } 
             else if (state.mode === 'MOVING_SELECTION') { state.mode = 'SELECTION_ACTIVE'; } 
             else if (state.mode === 'GESTURE_SWIPE') { const dy = e.clientY - state.strokeStartY; const duration = Date.now() - state.strokeStartTime; if (duration < 800 && Math.abs(dy) > 50) { if (dy < 0) { if (state.activePageIndex === state.pages.length - 1) addPage(); else scrollToNextPage(); } else { scrollToPrevPage(); } } state.mode = 'IDLE'; if(gestureZone.hasPointerCapture(e.pointerId)) gestureZone.releasePointerCapture(e.pointerId); } 
-            else if (state.mode === 'DRAWING') { state.mode = 'IDLE'; const page = state.pages[state.activePageIndex]; if (page) { page.ctx.beginPath(); saveStateToPage(state.activePageIndex); if (state.roomId && state.currentStrokePoints.length > 1) { broadcast({ type: 'stroke', points: state.currentStrokePoints, color: state.color, baseSize: state.baseSize, tool: state.tool, pageIndex: state.activePageIndex }); } else { triggerSave(); } state.currentStrokePoints = []; } }
+            else if (state.mode === 'DRAWING') { 
+                state.mode = 'IDLE'; 
+                const page = state.pages[state.activePageIndex]; 
+                
+                if (page) { 
+                    // Finish the stroke
+                    if (state.currentStrokePoints.length < 2) {
+                        // It was just a tap (Dot)
+                        page.ctx.beginPath();
+                        page.ctx.arc(state.lastX, state.lastY, state.baseSize * (state.lastPressure || 0.5), 0, Math.PI * 2);
+                        page.ctx.fillStyle = state.tool === 'eraser' ? '#ffffff' : state.color;
+                        if(state.tool === 'eraser') {
+                             page.ctx.globalCompositeOperation = 'destination-out';
+                             page.ctx.fill();
+                        } else {
+                             page.ctx.globalCompositeOperation = 'source-over';
+                             page.ctx.fill();
+                        }
+                    } else {
+                        // Draw the final tail from last midpoint to the pen tip
+                        page.ctx.beginPath();
+                        page.ctx.moveTo(state.lastPointDrawn.x, state.lastPointDrawn.y);
+                        page.ctx.lineTo(state.lastX, state.lastY);
+                        
+                        if (state.tool === 'eraser') {
+                            page.ctx.globalCompositeOperation = 'destination-out';
+                            page.ctx.lineWidth = state.baseSize * 3;
+                        } else {
+                            page.ctx.globalCompositeOperation = 'source-over';
+                            page.ctx.strokeStyle = state.color;
+                            page.ctx.lineWidth = Math.max(0.5, (state.lastPressure || 0.5) * state.baseSize * 2); 
+                        }
+                        page.ctx.stroke();
+                    }
+
+                    saveStateToPage(state.activePageIndex); 
+                    
+                    if (state.roomId && state.currentStrokePoints.length > 0) { 
+                        broadcast({ type: 'stroke', points: state.currentStrokePoints, color: state.color, baseSize: state.baseSize, tool: state.tool, pageIndex: state.activePageIndex }); 
+                    } else { 
+                        triggerSave(); 
+                    } 
+                    state.currentStrokePoints = []; 
+                } 
+            }
         }
 
         function draw(e, pageIndex) {
             const page = state.pages[pageIndex]; if (!page) return;
             const rect = page.canvas.getBoundingClientRect();
+            // Use Coalesced events for higher precision if available
             const events = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
             
-            // Calculate scale again for coalesced events since we need it per point
             const scaleX = page.canvas.width / rect.width;
             const scaleY = page.canvas.height / rect.height;
 
@@ -1246,11 +1332,53 @@
                 const x = (event.clientX - rect.left) * scaleX; 
                 const y = (event.clientY - rect.top) * scaleY;
                 const pressure = (event.pointerType === 'pen' && state.pressureEnabled) ? event.pressure : 0.5;
-                if (state.mode === 'DRAWING') { state.currentStrokePoints.push({ x: Math.round(x), y: Math.round(y), p: parseFloat(pressure.toFixed(2)) }); }
-                page.ctx.beginPath(); page.ctx.moveTo(state.lastX, state.lastY); page.ctx.lineTo(x, y);
-                if (state.tool === 'eraser') { page.ctx.globalCompositeOperation = 'destination-out'; page.ctx.lineWidth = state.baseSize * 3; } 
-                else { page.ctx.globalCompositeOperation = 'source-over'; page.ctx.strokeStyle = state.color; page.ctx.lineWidth = Math.max(0.5, event.pointerType === 'pen' ? (state.baseSize * pressure * 2) : state.baseSize); }
-                page.ctx.stroke(); state.lastX = x; state.lastY = y;
+                
+                // --- NOISE FILTER (New) ---
+                // Ignore points too close to the last captured point to prevent jitter/stair-stepping
+                // 3px threshold for 1920x1080 canvas
+                const dist = Math.hypot(x - state.lastX, y - state.lastY);
+                if (dist < 3) return; 
+
+                // P2P data collection
+                if (state.mode === 'DRAWING') { 
+                    // No rounding
+                    state.currentStrokePoints.push({ x: x, y: y, p: parseFloat(pressure.toFixed(2)) }); 
+                }
+
+                // --- SMOOTHING ALGORITHM (Quadratic Bezier) ---
+                // We draw from the previous Midpoint to the new Midpoint, 
+                // using the captured Point as the control point.
+                
+                const midX = (state.lastX + x) / 2;
+                const midY = (state.lastY + y) / 2;
+                
+                page.ctx.beginPath();
+                page.ctx.moveTo(state.lastPointDrawn.x, state.lastPointDrawn.y);
+                page.ctx.quadraticCurveTo(state.lastX, state.lastY, midX, midY);
+
+                // --- PRESSURE SMOOTHING ---
+                // Weighted average to prevent blobby lines
+                const alpha = 0.5; // Smoother transition
+                const smoothedPressure = state.lastPressure * alpha + pressure * (1 - alpha);
+                state.lastPressure = smoothedPressure;
+
+                if (state.tool === 'eraser') {
+                    page.ctx.globalCompositeOperation = 'destination-out';
+                    page.ctx.lineWidth = state.baseSize * 3;
+                } else {
+                    page.ctx.globalCompositeOperation = 'source-over';
+                    page.ctx.strokeStyle = state.color;
+                    // Scale width by pressure
+                    const width = Math.max(0.5, event.pointerType === 'pen' ? (state.baseSize * smoothedPressure * 2) : state.baseSize);
+                    page.ctx.lineWidth = width;
+                }
+                
+                page.ctx.stroke();
+                
+                // Update State
+                state.lastPointDrawn = { x: midX, y: midY };
+                state.lastX = x;
+                state.lastY = y;
             });
         }
 
